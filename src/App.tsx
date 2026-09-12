@@ -5,6 +5,7 @@ import { VideoResultCard } from './components/VideoResultCard';
 import { DownloadHistory } from './components/DownloadHistory';
 import { AppIdeasModal } from './components/AppIdeasModal';
 import { HowItWorksModal } from './components/HowItWorksModal';
+import { InstagramNoticeModal } from './components/InstagramNoticeModal';
 import { FeaturesShowcase } from './components/FeaturesShowcase';
 import { NotificationToast, ToastMessage } from './components/NotificationToast';
 import { VideoMediaInfo, DownloadHistoryItem } from './types';
@@ -21,6 +22,8 @@ export default function App() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isIdeasOpen, setIsIdeasOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isInstagramNoticeOpen, setIsInstagramNoticeOpen] = useState(false);
+  const [currentInstagramUrl, setCurrentInstagramUrl] = useState('');
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Theme state: defaults to 'dark', persists in localStorage, syncs with documentElement.classList
@@ -176,7 +179,14 @@ export default function App() {
       }, 100);
     } else {
       setMediaResult(null);
-      addToast('error', errorMessage || 'No se pudo obtener el video real. Asegúrate de que sea un video público.');
+      const isIg = targetUrl.toLowerCase().includes('instagram.com') || targetUrl.toLowerCase().includes('instagr.am');
+      if (isIg) {
+        setCurrentInstagramUrl(targetUrl);
+        setIsInstagramNoticeOpen(true);
+        addToast('info', 'Aviso de Instagram: Revisa las opciones en pantalla.');
+      } else {
+        addToast('error', errorMessage || 'No se pudo obtener el video real. Asegúrate de que sea un video público.');
+      }
     }
     setIsLoading(false);
   };
@@ -265,6 +275,17 @@ export default function App() {
       <HowItWorksModal
         isOpen={isHelpOpen}
         onClose={() => setIsHelpOpen(false)}
+      />
+
+      <InstagramNoticeModal
+        isOpen={isInstagramNoticeOpen}
+        onClose={() => setIsInstagramNoticeOpen(false)}
+        instagramUrl={currentInstagramUrl}
+        onTryTikTok={() => {
+          const sample = 'https://www.tiktok.com/@user/video/7684397094420892961';
+          setUrl(sample);
+          handleSearch(sample);
+        }}
       />
 
       {/* Toast notifications */}

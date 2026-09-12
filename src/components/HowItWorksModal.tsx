@@ -93,7 +93,7 @@ export function HowItWorksModal({ isOpen, onClose }: HowItWorksModalProps) {
           <div className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 flex items-center gap-2.5 sm:gap-3">
             <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <p className="text-[11px] sm:text-xs text-emerald-800 dark:text-emerald-300/90 leading-relaxed">
-              <strong>100% Gratuito y Privado:</strong> No almacenamos tus videos en servidores de terceros ni requerimos registro ni contraseña.
+              <strong>Compatibilidad:</strong> Los videos de <strong>TikTok</strong> se descargan al 100% de forma directa e ilimitada. En <strong>Instagram</strong>, Meta requiere autenticación activa; te asistimos para obtenerlo sin engaños.
             </p>
           </div>
         </div>

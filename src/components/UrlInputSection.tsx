@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Clipboard, X, Loader2, Play } from 'lucide-react';
+import { Search, Clipboard, X, Loader2, Play, AlertCircle } from 'lucide-react';
 import { Platform } from '../types';
 
 interface UrlInputSectionProps {
@@ -180,6 +180,19 @@ export function UrlInputSection({
               )}
             </button>
           </div>
+
+          {/* Instagram alert banner when Instagram URL is typed */}
+          {detectedPlatform === 'instagram' && (
+            <div className="mt-3 p-3 rounded-2xl bg-pink-500/10 border border-pink-500/30 text-pink-900 dark:text-pink-200 text-xs flex items-start gap-2.5 text-left animate-in fade-in duration-200">
+              <AlertCircle className="w-4 h-4 text-pink-600 dark:text-pink-400 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold text-pink-800 dark:text-pink-300">Enlace de Instagram detectado</p>
+                <p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-0.5 leading-relaxed">
+                  Meta bloquea las descargas directas en la web sin servidor backend. Al pulsar <strong>Obtener Video</strong> te guiaremos con opciones para este enlace o puedes probar con TikTok que descarga directamente.
+                </p>
+              </div>
+            </div>
+          )}
         </form>
 
         {/* Quick sample chip */}
