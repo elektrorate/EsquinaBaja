@@ -1,60 +1,34 @@
-# Conectar EsquinaBaja a Firebase Hosting y Cloud Functions
+# Despliegue Automático en Firebase desde GitHub (Sin usar la terminal)
 
-Esta guía explica cómo desplegar la aplicación en **Firebase Hosting** con **Cloud Functions** para procesar videos de Instagram y TikTok desde un backend seguro sin restricciones CORS del navegador.
-
----
-
-## 📁 Archivos ya configurados en el proyecto
-
-- `firebase.json`: Configura Firebase Hosting para servir la carpeta `dist` y redirigir `/api/**` hacia la Cloud Function `api`.
-- `.firebaserc`: Define el identificador del proyecto de Firebase predeterminado.
-- `functions/package.json`: Dependencias de la Cloud Function (Node.js 20, Express, CORS, Firebase Functions).
-- `functions/index.js`: Código del backend serverless que extrae metadatos y videos de Instagram y TikTok, e incluye proxy de descarga.
+Este repositorio ya está preparado con un flujo de **GitHub Actions** (`.github/workflows/firebase-deploy.yml`) que compila y despliega automáticamente la aplicación y las Cloud Functions a Firebase cada vez que se guarda un cambio en la rama `main`.
 
 ---
 
-## 🚀 Pasos para desplegar
+## 📋 Pasos para conectar GitHub con Firebase (Solo se hace una vez)
 
-### 1. Iniciar sesión en Firebase CLI
-En tu terminal:
-```bash
-npm install -g firebase-tools
-firebase login
-```
+### 1. Obtener el token de Firebase
+Para que GitHub tenga permiso de desplegar en tu cuenta de Firebase:
+- En tu navegador, visita:  
+  👉 **[Google Cloud Console - Cuentas de Servicio](https://console.cloud.google.com/iam-admin/serviceaccounts)**  
+  *(o la sección Configuración del Proyecto > Cuentas de servicio en Firebase)*.
+- Selecciona tu proyecto de Firebase.
+- Haz clic en tu cuenta de servicio de Firebase, ve a la pestaña **Claves (Keys)** > **Agregar clave** > **Crear clave nueva (JSON)** y descárgala.
+- O bien, si tienes acceso a una consola: ejecuta `firebase login:ci` para obtener un token alfanumérico.
 
-### 2. Vincular con tu proyecto de Firebase
-Si creaste un proyecto en [Firebase Console](https://console.firebase.google.com/):
-```bash
-firebase use --add
-# Selecciona tu proyecto y ponle el alias 'default'
-```
-
-*Nota: Para habilitar Cloud Functions, Firebase requiere que el proyecto esté en el plan **Blaze** (pago por uso, incluye 2M de ejecuciones gratuitas al mes).*
-
-### 3. Instalar dependencias de las funciones
-```bash
-cd functions
-npm install
-cd ..
-```
-
-### 4. Compilar la web y desplegar
-```bash
-# Compilar la aplicación React con Vite
-npm run build
-
-# Desplegar Hosting y Cloud Functions
-firebase deploy
-```
-
-Al terminar, Firebase te proporcionará la URL de producción:
-`https://<tu-proyecto>.web.app`
+### 2. Guardar el secreto en GitHub
+1. Abre tu repositorio en GitHub:  
+   👉 **[https://github.com/elektrorate/EsquinaBaja/settings/secrets/actions](https://github.com/elektrorate/EsquinaBaja/settings/secrets/actions)**
+2. Haz clic en el botón verde **«New repository secret»**.
+3. En **Name**, escribe exactamente:  
+   `FIREBASE_TOKEN`
+4. En **Secret**, pega el token generado o el contenido del archivo JSON de la clave.
+5. Haz clic en **«Add secret»**.
 
 ---
 
-## 🔐 (Opcional) Soporte de API Key para Instagram
-Si cuentas con una clave de RapidAPI para garantizar el 100% de tasa de éxito en Instagram Reels:
-```bash
-firebase functions:secrets:set RAPIDAPI_KEY
-```
-O define la variable de entorno en Firebase.
+## 🚀 ¡Listo!
+A partir de este momento:
+- Cada cambio en el código se compilará y desplegará automáticamente.
+- Puedes ver el progreso en vivo en la pestaña **[Actions](https://github.com/elektrorate/EsquinaBaja/actions)** de tu repositorio.
+- Tu aplicación estará disponible en:  
+  `https://<tu-id-de-proyecto>.web.app`
