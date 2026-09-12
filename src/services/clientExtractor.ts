@@ -66,23 +66,27 @@ async function extractTikTokClient(url: string): Promise<VideoMediaInfo> {
       createdAt: item.create_time ? new Date(item.create_time * 1000).toISOString() : undefined,
     };
   } else {
-    throw new Error(data.msg || 'No se pudo obtener el video de TikTok. Verifica que sea público.');
+    if (url.includes('/t/') || url.includes('vm.tiktok.com') || url.includes('vt.tiktok.com')) {
+      throw new Error('Los enlaces acortados de TikTok (vt.tiktok.com o /t/) no siempre exponen el video directo. Por favor abre el video en tu navegador y copia el enlace completo que contiene /video/...');
+    }
+    throw new Error(data.msg || 'No se pudo obtener el video de TikTok. Asegúrate de que el video sea público.');
   }
 }
 
 /**
- * Extracts Instagram media or throws an explicit error (Meta blocks unauthenticated browser cross-origin requests).
+ * Extracts Instagram media or explains why client-only extraction is restricted.
  */
 async function extractInstagramClient(url: string): Promise<VideoMediaInfo> {
   const cleanUrl = url.split('?')[0].replace(/\/$/, '');
   const shortcodeMatch = cleanUrl.match(/\/(p|reel|reels|tv)\/([A-Za-z0-9_-]+)/);
 
   if (!shortcodeMatch) {
-    throw new Error('Enlace de Instagram no válido. Debe ser un Reel, Post o Video.');
+    throw new Error('Enlace de Instagram no válido. Debe ser un Reel o Video (ej: https://www.instagram.com/reel/...).');
   }
 
-  // Meta blocks cross-origin scraping directly from browser frontends without server sessions
-  throw new Error('Meta (Instagram) bloquea la descarga de videos desde navegadores sin sesión activa. No descargaremos un video falso para no engañarte. Prueba con un enlace de TikTok para descargar el video real.');
+  throw new Error(
+    'En esta versión desplegada en GitHub Pages, Meta (Instagram) bloquea la extracción directa desde el navegador por políticas CORS. ¡Los enlaces de TikTok sí se procesan y descargan al instante en MP4 sin marca de agua!'
+  );
 }
 
 /**

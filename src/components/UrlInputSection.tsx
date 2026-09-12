@@ -182,26 +182,17 @@ export function UrlInputSection({
           </div>
         </form>
 
-        {/* Quick sample chips */}
+        {/* Quick sample chip */}
         <div className="mt-3.5 sm:mt-4 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 text-xs text-neutral-500 dark:text-neutral-400">
-          <span className="text-[11px] sm:text-xs text-neutral-500">Prueba con ejemplos:</span>
+          <span className="text-[11px] sm:text-xs text-neutral-500">¿Quieres probar ahora mismo?</span>
           <button
             type="button"
             id="btn-sample-tiktok"
             onClick={() => handleApplySample(sampleTikTok)}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-800 shadow-sm transition-colors touch-manipulation text-[11px] sm:text-xs"
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-800 shadow-sm transition-colors touch-manipulation text-[11px] sm:text-xs font-semibold active:scale-95"
           >
             <Play className="w-3 h-3 text-cyan-600 dark:text-cyan-400 fill-cyan-600 dark:fill-cyan-400" />
-            <span>Ejemplo TikTok</span>
-          </button>
-          <button
-            type="button"
-            id="btn-sample-instagram"
-            onClick={() => handleApplySample(sampleInstagram)}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-800 shadow-sm transition-colors touch-manipulation text-[11px] sm:text-xs"
-          >
-            <Play className="w-3 h-3 text-pink-600 dark:text-pink-400 fill-pink-600 dark:fill-pink-400" />
-            <span>Ejemplo Instagram</span>
+            <span>Probar video real de ejemplo</span>
           </button>
         </div>
       </div>

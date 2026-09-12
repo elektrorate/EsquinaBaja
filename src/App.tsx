@@ -55,12 +55,21 @@ export default function App() {
     addToast('info', `Modo ${nextTheme === 'dark' ? 'oscuro' : 'claro'} activado`);
   };
 
-  // Load history on mount
+  // Load history on mount & purge any old mock items
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        setHistory(JSON.parse(stored));
+        const parsed: DownloadHistoryItem[] = JSON.parse(stored);
+        const cleaned = parsed.filter(
+          (item) =>
+            item.downloadUrl &&
+            !item.downloadUrl.includes('flower') &&
+            !item.downloadUrl.includes('cc0-videos') &&
+            !item.downloadUrl.includes('mixkit')
+        );
+        setHistory(cleaned);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
       }
     } catch (e) {
       console.error('Error loading history:', e);
