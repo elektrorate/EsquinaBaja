@@ -1,0 +1,6 @@
+{
+  "name": "Descargador TikTok e Instagram",
+  "description": "Descarga videos de TikTok e Instagram sin marca de agua en alta definición MP4 y audio MP3.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
