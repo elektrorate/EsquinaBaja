@@ -147,7 +147,36 @@ async function extractInstagram(url: string) {
       console.warn('Instagram HTML fetch warning:', e);
     }
 
-    // Try alternative open scraper API if videoUrl wasn't found in HTML
+    // If RAPIDAPI_KEY is configured in environment, use RapidAPI Instagram Downloader
+    if (process.env.RAPIDAPI_KEY) {
+      try {
+        const rapidRes = await fetch('https://instagram-video-downloader13.p.rapidapi.com/index.php', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-rapidapi-key': process.env.RAPIDAPI_KEY,
+            'x-rapidapi-host': 'instagram-video-downloader13.p.rapidapi.com'
+          },
+          body: JSON.stringify({ url: cleanUrl })
+        });
+        if (rapidRes.ok) {
+          const rapidData = await rapidRes.json();
+          if (rapidData.url || rapidData.video_url || rapidData.download_url) {
+            videoUrl = rapidData.url || rapidData.video_url || rapidData.download_url;
+          }
+          if (rapidData.thumb || rapidData.thumbnail) {
+            coverUrl = rapidData.thumb || rapidData.thumbnail;
+          }
+          if (rapidData.title) {
+            title = rapidData.title;
+          }
+        }
+      } catch (err) {
+        console.warn('RapidAPI Instagram extraction warning:', err);
+      }
+    }
+
+    // Try alternative open scraper API if videoUrl wasn't found in HTML or RapidAPI
     if (!videoUrl) {
       try {
         const altRes = await fetch(`https://backend.clipto.com/api/v1/extract?url=${encodeURIComponent(cleanUrl)}`, {

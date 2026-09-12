@@ -101,15 +101,39 @@ export function InstagramNoticeModal({
               <button
                 type="button"
                 id="btn-open-snapinsta"
-                onClick={() => handleOpenAlternative('https://snapinsta.app')}
+                onClick={() => handleOpenAlternative(`https://snapinsta.app/`)}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-pink-50 dark:bg-pink-950/30 hover:bg-pink-100 dark:hover:bg-pink-950/50 border border-pink-200 dark:border-pink-800/60 text-pink-800 dark:text-pink-200 font-medium transition-colors text-xs sm:text-sm text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <ExternalLink className="w-4 h-4 text-pink-600 dark:text-pink-400 shrink-0" />
+                  <span>Descargar este Reel en SnapInsta</span>
+                </div>
+                <span className="text-[10px] bg-pink-600 text-white px-2 py-0.5 rounded-md uppercase font-bold">
+                  Gratis
+                </span>
+              </button>
+
+              <button
+                type="button"
+                id="btn-open-fastdl"
+                onClick={() => handleOpenAlternative(`https://fastdl.app/`)}
                 className="w-full flex items-center justify-between p-3 rounded-xl bg-neutral-100 dark:bg-neutral-800/80 hover:bg-neutral-200 dark:hover:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 font-medium transition-colors text-xs sm:text-sm text-left"
               >
                 <div className="flex items-center gap-2">
                   <ExternalLink className="w-4 h-4 text-neutral-500 shrink-0" />
-                  <span>Abrir en SnapInsta (para este Reel de Instagram)</span>
+                  <span>Opción alternativa: FastDL.app</span>
                 </div>
               </button>
             </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-neutral-100/80 dark:bg-neutral-800/50 border border-neutral-200/80 dark:border-neutral-800 text-[11px] text-neutral-600 dark:text-neutral-400 space-y-1">
+            <p className="font-semibold text-neutral-800 dark:text-neutral-200">
+              ⚡ Integración de Backend con RAPIDAPI_KEY:
+            </p>
+            <p>
+              Si despliegas la aplicación con backend (Node/Cloud Run) y configuras la variable <code className="px-1 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 font-mono text-[10px]">RAPIDAPI_KEY</code>, el servidor procesará los Reels de Instagram de forma 100% directa en la app.
+            </p>
           </div>
 
           {instagramUrl && (
