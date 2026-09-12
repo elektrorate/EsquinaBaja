@@ -141,11 +141,13 @@ export default function App() {
     }
 
     // 2. Client-side direct extractor fallback (Runs directly in browser, perfect for GitHub Pages)
+    let errorMessage = '';
     if (!extractedData) {
       try {
         extractedData = await extractMediaClient(targetUrl);
       } catch (clientErr: any) {
         console.warn('Client extraction error:', clientErr);
+        errorMessage = clientErr?.message || 'Error al procesar el enlace.';
       }
     }
 
@@ -164,45 +166,8 @@ export default function App() {
         document.getElementById('video-result-card')?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
     } else {
-      // If it was a demo link or user is testing, provide a rich fallback demo so they can see all download features working
-      if (targetUrl.includes('tiktok') || targetUrl.includes('instagram')) {
-        const isTikTok = targetUrl.includes('tiktok');
-        const fallbackData: VideoMediaInfo = {
-          id: isTikTok ? 'tt_demo_101' : 'ig_demo_202',
-          platform: isTikTok ? 'tiktok' : 'instagram',
-          originalUrl: targetUrl,
-          title: isTikTok
-            ? 'Increíble toma aérea de olas en la playa #nature #ocean #viral'
-            : 'Atardecer en la costa tropical #travel #reels #explore',
-          author: {
-            name: isTikTok ? 'Ocean Vibes' : 'Travel Explorers',
-            username: isTikTok ? '@oceanvibes' : '@travelexplorers',
-            avatar:
-              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-          },
-          thumbnail:
-            'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&auto=format&fit=crop&q=80',
-          duration: 18,
-          downloadOptions: {
-            videoNoWatermark:
-              'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
-            videoHd:
-              'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
-            audio: 'https://interactive-examples.mdn.mozilla.net/media/cc0-audio/t-rex-roar.mp3',
-            thumbnail:
-              'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&auto=format&fit=crop&q=80',
-          },
-          stats: {
-            views: 142000,
-            likes: 24500,
-            shares: 1840,
-          },
-        };
-        setMediaResult(fallbackData);
-        addToast('info', 'Video de demostración listo para descargar.');
-      } else {
-        addToast('error', 'No se pudo obtener el video. Verifica que el enlace sea público y válido.');
-      }
+      setMediaResult(null);
+      addToast('error', errorMessage || 'No se pudo obtener el video real. Asegúrate de que sea un video público.');
     }
     setIsLoading(false);
   };

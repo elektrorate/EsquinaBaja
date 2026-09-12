@@ -66,7 +66,7 @@ export function UrlInputSection({
   };
 
   // Sample quick test links
-  const sampleTikTok = 'https://www.tiktok.com/@tiktok/video/7106594312292453678';
+  const sampleTikTok = 'https://www.tiktok.com/@user/video/7684397094420892961';
   const sampleInstagram = 'https://www.instagram.com/reel/C32sP2iM_5k/';
 
   const handleApplySample = (sampleUrl: string) => {

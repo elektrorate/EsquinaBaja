@@ -71,54 +71,18 @@ async function extractTikTokClient(url: string): Promise<VideoMediaInfo> {
 }
 
 /**
- * Extracts Instagram media or returns clean media info.
+ * Extracts Instagram media or throws an explicit error (Meta blocks unauthenticated browser cross-origin requests).
  */
 async function extractInstagramClient(url: string): Promise<VideoMediaInfo> {
   const cleanUrl = url.split('?')[0].replace(/\/$/, '');
   const shortcodeMatch = cleanUrl.match(/\/(p|reel|reels|tv)\/([A-Za-z0-9_-]+)/);
-  const shortcode = shortcodeMatch ? shortcodeMatch[2] : 'ig_' + Date.now();
 
-  // Try oembed if accessible
-  let title = 'Reel de Instagram';
-  let authorName = 'Instagram Creator';
-  let coverUrl = `https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=800&auto=format&fit=crop&q=80`;
-
-  try {
-    const oembedRes = await fetch(`https://api.instagram.com/oembed/?url=${encodeURIComponent(cleanUrl)}`);
-    if (oembedRes.ok) {
-      const odata = await oembedRes.json();
-      if (odata.title) title = odata.title;
-      if (odata.author_name) authorName = odata.author_name;
-      if (odata.thumbnail_url) coverUrl = odata.thumbnail_url;
-    }
-  } catch {
-    // CORS or blocked by Instagram headers, use extracted metadata
+  if (!shortcodeMatch) {
+    throw new Error('Enlace de Instagram no válido. Debe ser un Reel, Post o Video.');
   }
 
-  // Reliable open sample video with open CORS
-  const fallbackVideo = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
-
-  return {
-    id: shortcode,
-    platform: 'instagram',
-    originalUrl: url,
-    title: title,
-    author: {
-      name: authorName,
-      username: `@${authorName.toLowerCase().replace(/\s+/g, '')}`,
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    },
-    thumbnail: coverUrl,
-    downloadOptions: {
-      videoNoWatermark: fallbackVideo,
-      videoHd: fallbackVideo,
-      audio: undefined,
-      thumbnail: coverUrl,
-    },
-    stats: {
-      likes: 1240,
-    },
-  };
+  // Meta blocks cross-origin scraping directly from browser frontends without server sessions
+  throw new Error('Meta (Instagram) bloquea la descarga de videos desde navegadores sin sesión activa. No descargaremos un video falso para no engañarte. Prueba con un enlace de TikTok para descargar el video real.');
 }
 
 /**

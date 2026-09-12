@@ -166,12 +166,13 @@ async function extractInstagram(url: string) {
       }
     }
 
-    // If still no videoUrl, we extract the shortcode and provide Instagram's direct link & fallback
+    // If still no videoUrl, we cannot deliver the real video - do not substitute a fake video
+    if (!videoUrl) {
+      throw new Error('Meta (Instagram) ha bloqueado el acceso a este video. La cuenta puede ser privada o requerir inicio de sesión.');
+    }
+
     const shortcodeMatch = cleanUrl.match(/\/(p|reel|reels|tv)\/([A-Za-z0-9_-]+)/);
     const shortcode = shortcodeMatch ? shortcodeMatch[2] : 'ig_' + Date.now();
-
-    // Fallback sample video if Instagram security restricts direct video stream without private session
-    const finalVideoUrl = videoUrl || `https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4`;
     const finalCover = coverUrl || `https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80`;
 
     return {
@@ -186,15 +187,15 @@ async function extractInstagram(url: string) {
       },
       thumbnail: finalCover,
       downloadOptions: {
-        videoNoWatermark: finalVideoUrl,
-        videoHd: finalVideoUrl,
+        videoNoWatermark: videoUrl,
+        videoHd: videoUrl,
         audio: undefined,
         thumbnail: finalCover,
       },
       stats: {
         likes: undefined,
       },
-      isFallback: !videoUrl,
+      isFallback: false,
     };
   } catch (err: any) {
     console.error('Instagram extraction error:', err.message);
