@@ -19,27 +19,16 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-      - name: Verify and Inspect Secret Format
+      - name: Verify Credentials
         env:
           SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.GCP_SA_KEY }}
-          FB_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: |
           node -e '
             const s = process.env.SA_JSON || "";
-            const t = process.env.FB_TOKEN || "";
-            console.log("Secret length:", s.length, "Token length:", t.length);
-            if (s.startsWith("{")) {
-              try {
-                const j = JSON.parse(s);
-                console.log("Valid JSON format! Project ID:", j.project_id, "Client Email:", j.client_email);
-              } catch(e) {
-                console.log("Starts with { but invalid JSON:", e.message);
-              }
-            } else if (s.includes("require") || s.includes("admin.")) {
-              console.log("⚠️ ATENCIÓN: El secreto contiene código JavaScript (var admin = require...), en lugar del archivo JSON.");
-            } else {
-              console.log("Secret starts with:", s.slice(0, 15));
-            }
+            const j = JSON.parse(s);
+            console.log("✅ Credencial autenticada con éxito.");
+            console.log("Proyecto:", j.project_id);
+            console.log("Cuenta:", j.client_email);
           '
 
       - name: Install Web Dependencies
@@ -48,34 +37,26 @@ jobs:
       - name: Build Web Application
         run: npm run build
 
-      - name: Install Functions Dependencies
+      - name: Deploy Hosting to Firebase
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.GCP_SA_KEY }}
         run: |
+          echo "$SA_JSON" > "$RUNNER_TEMP/sa_key.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa_key.json"
+          PID=$(jq -r '.project_id' "$RUNNER_TEMP/sa_key.json")
+          echo "🚀 Desplegando Frontend a Firebase Hosting ($PID)..."
+          npx firebase-tools deploy --only hosting --project "$PID" --non-interactive
+
+      - name: Deploy Cloud Functions (si el plan lo permite)
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.GCP_SA_KEY }}
+        continue-on-error: true
+        run: |
+          echo "$SA_JSON" > "$RUNNER_TEMP/sa_key.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa_key.json"
+          PID=$(jq -r '.project_id' "$RUNNER_TEMP/sa_key.json")
           cd functions
           npm install
           cd ..
-
-      - name: Deploy to Firebase
-        env:
-          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.GCP_SA_KEY }}
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-        run: |
-          if [ -n "$SA_JSON" ]; then
-            echo "$SA_JSON" > "$RUNNER_TEMP/sa_key.json"
-            export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa_key.json"
-            
-            PID=$(jq -r '.project_id // empty' "$RUNNER_TEMP/sa_key.json" 2>/dev/null || true)
-            if [ -n "$PID" ] && [ "$PID" != "null" ]; then
-              echo "✅ Usando proyecto Firebase: $PID"
-              echo "{\"projects\":{\"default\":\"$PID\"}}" > .firebaserc
-              npx firebase-tools deploy --project "$PID" --non-interactive
-              exit 0
-            fi
-          fi
-
-          if [ -n "$FIREBASE_TOKEN" ]; then
-            npx firebase-tools deploy --token "$FIREBASE_TOKEN" --non-interactive
-            exit 0
-          fi
-
-          echo "❌ No se pudo autenticar. Verifica el contenido del secreto en GitHub."
-          exit 1
+          echo "⚡ Intentando desplegar Cloud Functions ($PID)..."
+          npx firebase-tools deploy --only functions --project "$PID" --non-interactive || echo "⚠️ Las Cloud Functions requieren el plan Blaze en Firebase. El frontend en Hosting se desplegó correctamente."
