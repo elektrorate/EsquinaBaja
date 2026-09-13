@@ -1,6 +1,7 @@
 const functions = require("firebase-functions");
 const express = require("express");
 const cors = require("cors");
+const youtubedl = require("youtube-dl-exec");
 
 const app = express();
 app.use(cors({ origin: true }));
@@ -75,6 +76,33 @@ async function extractTikTok(url) {
   }
 
   throw new Error(data.msg || "No se pudo obtener el video de TikTok. Asegúrate de que sea público.");
+}
+
+// yt-dlp fallback: extracts direct media URL + metadata without any API key/quota
+// Runs on Linux in Cloud Functions thanks to youtube-dl-exec bundled binary.
+async function extractWithYtDlp(url) {
+  try {
+    const info = await youtubedl(
+      url,
+      { dumpSingleJson: true, noWarnings: true, noPlaylist: true },
+      { timeout: 60000 }
+    );
+    let videoUrl = info.url || "";
+    if (videoUrl && !/^https?:/.test(videoUrl)) videoUrl = "";
+    if (!videoUrl && Array.isArray(info.formats)) {
+      const f = [...info.formats].reverse().find((x) => x.url && /^https?:/.test(x.url));
+      videoUrl = f?.url || "";
+    }
+    if (!videoUrl) return null;
+    return {
+      videoUrl,
+      title: typeof info.title === "string" ? info.title : undefined,
+      thumbnail: typeof info.thumbnail === "string" ? info.thumbnail : undefined,
+    };
+  } catch (e) {
+    console.warn("yt-dlp extraction failed:", e.message || e);
+    return null;
+  }
 }
 
 // 2. Instagram extraction
@@ -158,6 +186,16 @@ async function extractInstagram(url) {
       }
     } catch (e) {
       console.warn("HTML extraction warning in Cloud Function:", e);
+    }
+  }
+
+  // yt-dlp fallback (free, no API key, no quota) if everything else failed
+  if (!videoUrl) {
+    const ytInfo = await extractWithYtDlp(cleanUrl);
+    if (ytInfo && ytInfo.videoUrl) {
+      videoUrl = ytInfo.videoUrl;
+      if (!coverUrl && ytInfo.thumbnail) coverUrl = ytInfo.thumbnail;
+      if (!title && ytInfo.title) title = ytInfo.title;
     }
   }
 

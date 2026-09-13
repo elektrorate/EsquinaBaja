@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Descargador local (solo Windows / desarrollo)
+yt-dlp.exe

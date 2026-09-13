@@ -4,6 +4,15 @@ Este repositorio ya está preparado con un flujo de **GitHub Actions** (`.github
 
 ---
 
+## ⚠️ Importante: Cómo funciona la descarga de Reels en producción
+
+- La **Cloud Function** (`functions/index.js`) extrae el video real con **yt-dlp** (vía `youtube-dl-exec`). **No necesita API key ni cuotas** de RapidAPI.
+- El binario de yt-dlp para Linux se descarga automáticamente durante el `npm install` de la función. `yt-dlp.exe` está en `.gitignore`.
+- **Las Cloud Functions requieren el plan Blaze** (facturación por uso). Sin funciones, Instagram no descarga.
+- `yt-dlp.exe` es solo para desarrollo local en Windows (`npm run dev`).
+
+---
+
 ## 📋 Pasos para conectar GitHub con Firebase (Solo se hace una vez)
 
 ### 1. Obtener el token de Firebase

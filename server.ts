@@ -1,9 +1,15 @@
+import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { createServer as createViteServer } from 'vite';
 
+const execFileAsync = promisify(execFile);
+const YTDLP_BIN = path.join(process.cwd(), 'yt-dlp.exe');
+
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 8040;
 
 app.use(express.json());
 
@@ -76,6 +82,34 @@ async function extractTikTok(url: string) {
   } catch (err: any) {
     console.error('TikTok extraction error:', err.message);
     throw err;
+  }
+}
+
+// yt-dlp fallback: extracts direct media URL + metadata without any API key/quota
+async function extractWithYtDlp(url: string) {
+  try {
+    const { stdout } = await execFileAsync(
+      YTDLP_BIN,
+      ['--no-warnings', '--no-playlist', '-J', url],
+      { timeout: 60000, windowsHide: true, maxBuffer: 15 * 1024 * 1024 }
+    );
+    const info = JSON.parse(stdout);
+    let videoUrl = info.url || '';
+    if (videoUrl && !videoUrl.startsWith('http')) videoUrl = '';
+    if (!videoUrl && Array.isArray(info.formats)) {
+      const f = [...info.formats].reverse().find((x: any) => x.url && String(x.url).startsWith('http'));
+      videoUrl = f?.url || '';
+    }
+    if (!videoUrl) return null;
+    return {
+      videoUrl,
+      title: typeof info.title === 'string' ? info.title : undefined,
+      thumbnail: typeof info.thumbnail === 'string' ? info.thumbnail : undefined,
+      duration: typeof info.duration === 'number' ? info.duration : undefined,
+    };
+  } catch (err: any) {
+    console.warn('yt-dlp extraction failed:', err.message);
+    return null;
   }
 }
 
@@ -192,6 +226,16 @@ async function extractInstagram(url: string) {
         }
       } catch {
         // ignore
+      }
+    }
+
+    // Local yt-dlp fallback: free, no API key, no quota limits
+    if (!videoUrl) {
+      const ytInfo = await extractWithYtDlp(cleanUrl);
+      if (ytInfo && ytInfo.videoUrl) {
+        videoUrl = ytInfo.videoUrl;
+        if (!coverUrl && ytInfo.thumbnail) coverUrl = ytInfo.thumbnail;
+        if (!title && ytInfo.title) title = ytInfo.title;
       }
     }
 
