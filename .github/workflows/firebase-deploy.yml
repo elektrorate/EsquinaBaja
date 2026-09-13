@@ -18,15 +18,15 @@ jobs:
         with:
           node-version: 20
 
-      - name: Verify Firebase Token
+      - name: Verify Firebase Credentials
         id: check_token
         run: |
-          if [ -z "${{ secrets.FIREBASE_TOKEN }}" ]; then
-            echo "has_token=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ FIREBASE_TOKEN no detectado en GitHub Secrets."
-          else
+          if [ -n "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ] || [ -n "${{ secrets.GCP_SA_KEY }}" ] || [ -n "${{ secrets.FIREBASE_TOKEN }}" ]; then
             echo "has_token=true" >> $GITHUB_OUTPUT
-            echo "✅ FIREBASE_TOKEN detectado."
+            echo "✅ Credenciales de Firebase detectadas en GitHub Secrets."
+          else
+            echo "has_token=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ No se detectaron credenciales en GitHub Secrets."
           fi
 
       - name: Install Web Dependencies
@@ -50,4 +50,5 @@ jobs:
         with:
           args: deploy
         env:
+          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.GCP_SA_KEY || secrets.FIREBASE_TOKEN }}
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
