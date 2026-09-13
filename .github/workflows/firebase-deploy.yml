@@ -19,37 +19,42 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-      - name: Verify Firebase Credentials
-        id: check_token
+      - name: Verify and Inspect Secret Format
         env:
           SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.GCP_SA_KEY }}
           FB_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: |
-          if [ -n "$SA_JSON" ] || [ -n "$FB_TOKEN" ]; then
-            echo "has_token=true" >> $GITHUB_OUTPUT
-            echo "✅ Credenciales de Firebase detectadas."
-          else
-            echo "has_token=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ No se detectaron credenciales en GitHub Secrets."
-          fi
+          node -e '
+            const s = process.env.SA_JSON || "";
+            const t = process.env.FB_TOKEN || "";
+            console.log("Secret length:", s.length, "Token length:", t.length);
+            if (s.startsWith("{")) {
+              try {
+                const j = JSON.parse(s);
+                console.log("Valid JSON format! Project ID:", j.project_id, "Client Email:", j.client_email);
+              } catch(e) {
+                console.log("Starts with { but invalid JSON:", e.message);
+              }
+            } else if (s.includes("require") || s.includes("admin.")) {
+              console.log("⚠️ ATENCIÓN: El secreto contiene código JavaScript (var admin = require...), en lugar del archivo JSON.");
+            } else {
+              console.log("Secret starts with:", s.slice(0, 15));
+            }
+          '
 
       - name: Install Web Dependencies
-        if: steps.check_token.outputs.has_token == 'true'
         run: npm install
 
       - name: Build Web Application
-        if: steps.check_token.outputs.has_token == 'true'
         run: npm run build
 
       - name: Install Functions Dependencies
-        if: steps.check_token.outputs.has_token == 'true'
         run: |
           cd functions
           npm install
           cd ..
 
       - name: Deploy to Firebase
-        if: steps.check_token.outputs.has_token == 'true'
         env:
           SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.GCP_SA_KEY }}
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
@@ -60,9 +65,17 @@ jobs:
             
             PID=$(jq -r '.project_id // empty' "$RUNNER_TEMP/sa_key.json" 2>/dev/null || true)
             if [ -n "$PID" ] && [ "$PID" != "null" ]; then
-              echo "✅ Usando proyecto Firebase detectado: $PID"
+              echo "✅ Usando proyecto Firebase: $PID"
               echo "{\"projects\":{\"default\":\"$PID\"}}" > .firebaserc
+              npx firebase-tools deploy --project "$PID" --non-interactive
+              exit 0
             fi
           fi
 
-          npx firebase-tools deploy --non-interactive
+          if [ -n "$FIREBASE_TOKEN" ]; then
+            npx firebase-tools deploy --token "$FIREBASE_TOKEN" --non-interactive
+            exit 0
+          fi
+
+          echo "❌ No se pudo autenticar. Verifica el contenido del secreto en GitHub."
+          exit 1
