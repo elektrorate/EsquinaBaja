@@ -50,6 +50,59 @@ function formatStat(num?: number): number | undefined {
 // 1. Tikwm / TikTok extraction
 async function extractTikTok(url: string) {
   try {
+    // Try direct HTML scrape first (no external API, works from datacenter IPs)
+    try {
+      const htmlRes = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        },
+      });
+      if (htmlRes.ok) {
+        const html = await htmlRes.text();
+        const scriptMatch = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/);
+        if (scriptMatch) {
+          const json = JSON.parse(scriptMatch[1]);
+          const item = json?.__DEFAULT_SCOPE__?.['webapp.video-detail']?.itemInfo?.itemStruct;
+          if (item?.video) {
+            const playAddr = item.video.playAddr?.find?.((p: any) => p.quality ?? 0) || item.video.playAddr?.[0];
+            const videoUrl = playAddr?.src?.startsWith('http') ? playAddr.src : item.video.downloadAddr;
+            if (videoUrl) {
+              const coverUrl = item.video.cover?.startsWith('http') ? item.video.cover : item.video.dynamicCover;
+              const musicUrl = item.music?.playUrl?.startsWith('http') ? item.music.playUrl : undefined;
+              return {
+                id: item.id || `tt_${Date.now()}`,
+                platform: 'tiktok' as const,
+                originalUrl: url,
+                title: item.desc || 'Video de TikTok',
+                author: {
+                  name: item.author?.nickname || 'TikTok Creator',
+                  username: item.author?.uniqueId ? `@${item.author.uniqueId}` : '@tiktok',
+                  avatar: item.author?.avatarThumb,
+                },
+                thumbnail: coverUrl,
+                duration: item.video.duration || 0,
+                downloadOptions: {
+                  videoNoWatermark: videoUrl,
+                  videoHd: videoUrl,
+                  audio: musicUrl,
+                  thumbnail: coverUrl,
+                },
+                stats: {
+                  likes: formatStat(item.stats?.diggCount),
+                  views: formatStat(item.stats?.playCount),
+                  shares: formatStat(item.stats?.shareCount),
+                  comments: formatStat(item.stats?.commentCount),
+                },
+                createdAt: item.createTime ? new Date(item.createTime * 1000).toISOString() : undefined,
+              };
+            }
+          }
+        }
+      }
+    } catch {
+      // fall through to TikWM below
+    }
+
     const apiUrl = `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}&hd=1`;
     const response = await fetch(apiUrl, {
       headers: {
@@ -387,7 +440,33 @@ app.post('/api/extract', async (req: Request, res: Response) => {
         res.json({ success: true, data });
         return;
       } catch (ttErr: any) {
-        // Fallback with helpful error or structured demo
+        console.error('TikTok fallback (tikwm+html) failed:', ttErr.message);
+        // Last resort: try yt-dlp
+        try {
+          const yd = await extractWithYtDlp(trimmedUrl);
+          if (yd?.videoUrl) {
+            res.json({
+              success: true,
+              data: {
+                id: `tt_${Date.now()}`,
+                platform: 'tiktok',
+                originalUrl: trimmedUrl,
+                title: yd.title || 'Video de TikTok',
+                author: { name: 'TikTok Creator', username: '@tiktok' },
+                thumbnail: yd.thumbnail,
+                duration: yd.duration || 0,
+                downloadOptions: {
+                  videoNoWatermark: yd.videoUrl,
+                  videoHd: yd.videoUrl,
+                  thumbnail: yd.thumbnail,
+                },
+              },
+            });
+            return;
+          }
+        } catch (ydErr: any) {
+          console.error('TikTok yt-dlp fallback failed:', ydErr.message);
+        }
         res.status(422).json({
           success: false,
           error: 'No se pudo obtener el video de TikTok. Verifica que el video sea público y que el enlace esté completo.',
