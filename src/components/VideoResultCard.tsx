@@ -10,9 +10,12 @@ import {
   Eye,
   Share2,
   Clock,
+  Cloud,
+  ExternalLink as DriveLink,
 } from 'lucide-react';
 import { VideoMediaInfo, DownloadHistoryItem } from '../types';
 import { downloadFileUniversal } from '../services/clientExtractor';
+import { signInToGoogleAndUpload } from '../services/googleDrive';
 
 interface VideoResultCardProps {
   media: VideoMediaInfo;
@@ -25,6 +28,9 @@ export function VideoResultCard({ media, onToast, onAddHistory }: VideoResultCar
   const [isDownloadingVideo, setIsDownloadingVideo] = useState(false);
   const [isDownloadingAudio, setIsDownloadingAudio] = useState(false);
   const [isDownloadingThumb, setIsDownloadingThumb] = useState(false);
+  const [isSavingToDrive, setIsSavingToDrive] = useState(false);
+  const [driveLink, setDriveLink] = useState<string | null>(null);
+  const [driveError, setDriveError] = useState<string | null>(null);
 
   const cleanFilename = (base: string, ext: string) => {
     const slug = (media.title || 'video')
@@ -104,6 +110,34 @@ export function VideoResultCard({ media, onToast, onAddHistory }: VideoResultCar
       onToast('success', 'Enlace directo copiado');
     } catch {
       onToast('error', 'No se pudo copiar el enlace.');
+    }
+  };
+
+  const handleSaveToDrive = async () => {
+    const videoUrl = media.downloadOptions.videoHd || media.downloadOptions.videoNoWatermark;
+    if (!videoUrl) {
+      onToast('error', 'El video no tiene una URL de descarga disponible.');
+      return;
+    }
+
+    setIsSavingToDrive(true);
+    setDriveError(null);
+    setDriveLink(null);
+    onToast('info', 'Iniciando sesión con Google para guardar en Drive...');
+
+    const result = await signInToGoogleAndUpload({
+      videoUrl,
+      filename: cleanFilename('video', 'mp4'),
+      mimeType: 'video/mp4',
+    });
+
+    setIsSavingToDrive(false);
+    if (result.ok && result.webViewLink) {
+      setDriveLink(result.webViewLink);
+      onToast('success', 'Video guardado en tu Google Drive');
+    } else {
+      setDriveError(result.error || 'No se pudo guardar en Google Drive.');
+      onToast('error', result.error || 'No se pudo guardar en Google Drive.');
     }
   };
 
@@ -351,6 +385,48 @@ export function VideoResultCard({ media, onToast, onAddHistory }: VideoResultCar
                   Copiar enlace directo al archivo
                 </button>
                 <span>Descarga libre y sin límites</span>
+              </div>
+
+              {/* Google Drive Save */}
+              <div className="mt-1 pt-3 border-t border-neutral-100 dark:border-neutral-800/60">
+                <button
+                  type="button"
+                  id="btn-save-to-drive"
+                  disabled={isSavingToDrive}
+                  onClick={handleSaveToDrive}
+                  className="w-full flex items-center justify-between px-3.5 sm:px-4 py-2.5 rounded-xl sm:rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-xs sm:text-sm shadow-lg shadow-blue-950/20 active:scale-[0.98] transition-all disabled:opacity-50 touch-manipulation min-h-[44px]"
+                >
+                  <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 pr-2">
+                    <Cloud className="w-4 h-4 shrink-0" />
+                    <span className="truncate">
+                      {isSavingToDrive
+                        ? 'Guardando en Google Drive...'
+                        : 'Guardar en Google Drive'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] sm:text-xs bg-white/20 px-2 py-0.5 rounded-md font-bold shrink-0">
+                    DRIVE
+                  </span>
+                </button>
+
+                {driveLink && (
+                  <a
+                    href={driveLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    id="drive-link-success"
+                    className="mt-2 flex items-center justify-center gap-1.5 text-xs sm:text-sm text-blue-700 dark:text-blue-400 font-semibold hover:underline transition-colors"
+                  >
+                    <DriveLink className="w-4 h-4 shrink-0" />
+                    Ver archivo en tu Google Drive
+                  </a>
+                )}
+
+                {driveError && (
+                  <p className="mt-2 text-[11px] sm:text-xs text-red-600 dark:text-red-400 text-center">
+                    {driveError}
+                  </p>
+                )}
               </div>
             </div>
           </div>

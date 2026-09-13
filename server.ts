@@ -417,6 +417,103 @@ app.get('/api/proxy-download', async (req: Request, res: Response) => {
   }
 });
 
+// Google Drive: download video from source URL and upload it to the user's Drive
+app.post('/api/drive/upload', async (req: Request, res: Response) => {
+  try {
+    const { accessToken, videoUrl, filename, mimeType } = req.body;
+    if (!accessToken || !videoUrl || !filename) {
+      res.status(400).json({ success: false, error: 'Faltan datos para guardar en Google Drive.' });
+      return;
+    }
+
+    // 1. Download the video bytes from the source (streaming)
+    const mediaRes = await fetch(videoUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Referer': videoUrl.includes('tiktok') ? 'https://www.tiktok.com/' : 'https://www.instagram.com/',
+      },
+    });
+
+    if (!mediaRes.ok || !mediaRes.body) {
+      res.status(502).json({ success: false, error: 'No se pudo descargar el video desde el servidor de origen.' });
+      return;
+    }
+
+    const mediaBuffer = Buffer.from(await mediaRes.arrayBuffer());
+    const contentType =
+      mimeType || mediaRes.headers.get('content-type') || 'video/mp4';
+    const safeFilename = filename.replace(/[^\w\-.]/g, '_').slice(-80);
+
+    // 2. Create an empty file in Drive via resumable upload session
+    const metadataBody = JSON.stringify({
+      name: safeFilename,
+      mimeType: contentType,
+      parents: ['root'],
+    });
+
+    const sessionRes = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json; charset=UTF-8',
+          'X-Upload-Content-Type': contentType,
+          'X-Upload-Content-Length': String(mediaBuffer.length),
+        },
+        body: metadataBody,
+      }
+    );
+
+    if (!sessionRes.ok) {
+      const errText = await sessionRes.text();
+      res.status(401).json({
+        success: false,
+        error: 'Google rechazó la sesión. Tu sesión de Google pudo expirar.',
+        details: errText.slice(0, 300),
+      });
+      return;
+    }
+
+    const uploadUri = sessionRes.headers.get('location');
+    if (!uploadUri) {
+      res.status(500).json({ success: false, error: 'Google no devolvió una sesión de subida válida.' });
+      return;
+    }
+
+    // 3. Upload the bytes to the resumable session
+    const uploadRes = await fetch(uploadUri, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: mediaBuffer,
+    });
+
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text();
+      res.status(502).json({
+        success: false,
+        error: 'Error al subir el archivo a Google Drive.',
+        details: errText.slice(0, 300),
+      });
+      return;
+    }
+
+    const fileData = await uploadRes.json();
+    res.json({
+      success: true,
+      data: {
+        fileId: fileData.id,
+        name: fileData.name,
+        mimeType: fileData.mimeType,
+        webViewLink: fileData.webViewLink || `https://drive.google.com/file/d/${fileData.id}/view`,
+      },
+    });
+  } catch (driveErr: any) {
+    console.error('Google Drive upload error:', driveErr.message);
+    res.status(500).json({ success: false, error: 'Ocurrió un error al guardar en Google Drive.' });
+  }
+});
+
 async function startServer() {
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
