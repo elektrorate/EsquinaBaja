@@ -133,8 +133,9 @@ export function VideoResultCard({ media, onToast, onAddHistory }: VideoResultCar
 
     setIsSavingToDrive(false);
     if (result.ok && result.webViewLink) {
+      const folderName = result.folderName ? ` en "${result.folderName}"` : '';
       setDriveLink(result.webViewLink);
-      onToast('success', 'Video guardado en tu Google Drive');
+      onToast('success', `Guardado en tu Google Drive${folderName}`);
     } else {
       setDriveError(result.error || 'No se pudo guardar en Google Drive.');
       onToast('error', result.error || 'No se pudo guardar en Google Drive.');

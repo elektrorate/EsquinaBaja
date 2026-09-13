@@ -61,6 +61,7 @@ export interface DriveUploadResult {
   ok: boolean;
   fileId?: string;
   webViewLink?: string;
+  folderName?: string;
   error?: string;
 }
 
@@ -83,7 +84,7 @@ export async function uploadVideoToDrive(opts: {
     });
     const json = await res.json();
     if (res.ok && json.success) {
-      return { ok: true, fileId: json.data?.fileId, webViewLink: json.data?.webViewLink };
+      return { ok: true, fileId: json.data?.fileId, webViewLink: json.data?.webViewLink, folderName: json.data?.folderName };
     }
     return { ok: false, error: json.error || 'Error al guardar en Google Drive.' };
   } catch (err: any) {

@@ -444,11 +444,49 @@ app.post('/api/drive/upload', async (req: Request, res: Response) => {
       mimeType || mediaRes.headers.get('content-type') || 'video/mp4';
     const safeFilename = filename.replace(/[^\w\-.]/g, '_').slice(-80);
 
-    // 2. Create an empty file in Drive via resumable upload session
+    const FOLDER_NAME = process.env.DRIVE_FOLDER_NAME || 'Esquina Baja';
+
+    // 2a. Find (or create) the target folder in the user's Drive
+    const existingRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`)}&fields=files(id,name)&pageSize=1`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+
+    let folderId = 'root';
+    if (existingRes.ok) {
+      const existingData = await existingRes.json();
+      const folder = existingData.files?.[0];
+      if (folder) {
+        folderId = folder.id;
+      }
+    }
+
+    if (folderId === 'root') {
+      const createFolderRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: FOLDER_NAME,
+          mimeType: 'application/vnd.google-apps.folder',
+        }),
+      });
+
+      if (createFolderRes.ok) {
+        const createdFolder = await createFolderRes.json();
+        folderId = createdFolder.id;
+      }
+    }
+
+    // 2b. Create an empty file in Drive via resumable upload session
     const metadataBody = JSON.stringify({
       name: safeFilename,
       mimeType: contentType,
-      parents: ['root'],
+      parents: [folderId],
     });
 
     const sessionRes = await fetch(
@@ -505,6 +543,8 @@ app.post('/api/drive/upload', async (req: Request, res: Response) => {
         fileId: fileData.id,
         name: fileData.name,
         mimeType: fileData.mimeType,
+        folderId,
+        folderName: FOLDER_NAME,
         webViewLink: fileData.webViewLink || `https://drive.google.com/file/d/${fileData.id}/view`,
       },
     });
