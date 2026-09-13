@@ -7,5 +7,6 @@ coverage/
 .env*
 !.env.example
 
-# Descargador local (solo Windows / desarrollo)
+# yt-dlp local (Windows) / descargado en build de Render (Linux)
 yt-dlp.exe
+yt-dlp

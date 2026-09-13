@@ -1,4 +1,5 @@
 import { VideoMediaInfo } from '../types';
+import { API_BASE_URL } from '../config';
 
 export function detectPlatform(urlStr: string): 'tiktok' | 'instagram' | 'unknown' {
   const lower = urlStr.toLowerCase().trim();
@@ -84,8 +85,21 @@ async function extractInstagramClient(url: string): Promise<VideoMediaInfo> {
     throw new Error('Enlace de Instagram no válido. Debe ser un Reel o Video (ej: https://www.instagram.com/reel/...).');
   }
 
+  // Try the online backend (Render) extracting directly with yt-dlp
+  if (API_BASE_URL) {
+    const res = await fetch(`${API_BASE_URL}/api/extract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data) return json.data;
+    }
+  }
+
   throw new Error(
-    'En esta versión desplegada en GitHub Pages, Meta (Instagram) bloquea la extracción directa desde el navegador por políticas CORS. ¡Los enlaces de TikTok sí se procesan y descargan al instante en MP4 sin marca de agua!'
+    'Instagram bloquea la extracción directa desde el navegador por políticas CORS. Prueba de nuevo en un momento o usa un enlace público.'
   );
 }
 
@@ -140,23 +154,20 @@ export async function downloadFileUniversal(url: string, filename: string): Prom
     }
   }
 
-  // 2. If running on a fullstack server (not static host like GitHub Pages), try backend proxy:
-  const isGitHubPages = typeof window !== 'undefined' && window.location.hostname.includes('github.io');
-  if (!isGitHubPages) {
-    try {
-      const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
-      const link = document.createElement('a');
-      link.href = proxyUrl;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      setTimeout(() => {
-        document.body.removeChild(link);
-      }, 300);
-      return true;
-    } catch {
-      // fallback
-    }
+  // 2. Try backend proxy: relative path on localhost, Render URL on online versions
+  try {
+    const proxyUrl = `${API_BASE_URL}/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+    const link = document.createElement('a');
+    link.href = proxyUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      document.body.removeChild(link);
+    }, 300);
+    return true;
+  } catch {
+    // fallback
   }
 
   // 3. Fallback: Direct download trigger

@@ -129,10 +129,10 @@ export function InstagramNoticeModal({
 
           <div className="p-3 rounded-xl bg-neutral-100/80 dark:bg-neutral-800/50 border border-neutral-200/80 dark:border-neutral-800 text-[11px] text-neutral-600 dark:text-neutral-400 space-y-1">
             <p className="font-semibold text-neutral-800 dark:text-neutral-200">
-              ⚡ Integración de Backend con RAPIDAPI_KEY:
+              ⚡ Backend en línea incluido (gratis):
             </p>
             <p>
-              Si despliegas la aplicación con backend (Node/Cloud Run) y configuras la variable <code className="px-1 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 font-mono text-[10px]">RAPIDAPI_KEY</code>, el servidor procesará los Reels de Instagram de forma 100% directa en la app.
+              La app se conecta automáticamente a un backend gratuito que procesa los Reels de Instagram con el descargador yt-dlp. No requiere API keys ni pagos.
             </p>
           </div>
 

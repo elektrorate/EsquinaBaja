@@ -10,6 +10,7 @@ import { FeaturesShowcase } from './components/FeaturesShowcase';
 import { NotificationToast, ToastMessage } from './components/NotificationToast';
 import { VideoMediaInfo, DownloadHistoryItem } from './types';
 import { extractMediaClient } from './services/clientExtractor';
+import { API_BASE_URL } from './config';
 
 const STORAGE_KEY = 'snapflow_download_history';
 const THEME_STORAGE_KEY = 'snapflow_theme_preference';
@@ -134,7 +135,7 @@ export default function App() {
 
     if (!isStaticHost) {
       try {
-        const res = await fetch('/api/extract', {
+        const res = await fetch(`${API_BASE_URL}/api/extract`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: targetUrl }),

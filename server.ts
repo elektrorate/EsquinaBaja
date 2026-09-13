@@ -6,12 +6,33 @@ import { promisify } from 'util';
 import { createServer as createViteServer } from 'vite';
 
 const execFileAsync = promisify(execFile);
-const YTDLP_BIN = path.join(process.cwd(), 'yt-dlp.exe');
+const YTDLP_BIN = process.env.YTDLP_BIN || path.join(process.cwd(), process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8040;
 
 app.use(express.json());
+
+// CORS for online backend (Render / Firebase Hosting)
+app.use('/api', (req, res, next) => {
+  const allowedOrigins = [
+    'https://esquinabaja-e4009.web.app',
+    'https://elektrorate.github.io',
+    'http://localhost:8040',
+    'http://localhost:5173',
+  ];
+  const origin = req.headers.origin || '';
+  if (allowedOrigins.some((o) => origin.startsWith(o))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+  next();
+});
 
 // Helper to determine platform from URL
 function detectPlatform(urlStr: string): 'tiktok' | 'instagram' | 'unknown' {
