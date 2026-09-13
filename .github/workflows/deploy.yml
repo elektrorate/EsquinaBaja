@@ -36,6 +36,7 @@ jobs:
       - name: Build project
         env:
           VITE_GOOGLE_CLIENT_ID: '88041729497-scn9dkp840dl6nackacuftm3r7hfnb4a.apps.googleusercontent.com'
+          VITE_API_BASE_URL: 'https://esquinabaja-api-orzc.onrender.com'
         run: npm run build
 
       - name: Setup Pages
