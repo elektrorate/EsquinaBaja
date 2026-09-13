@@ -35,6 +35,8 @@ jobs:
         run: npm install
 
       - name: Build Web Application
+        env:
+          VITE_GOOGLE_CLIENT_ID: '88041729497-scn9dkp840dl6nackacuftm3r7hfnb4a.apps.googleusercontent.com'
         run: npm run build
 
       - name: Deploy Hosting to Firebase
