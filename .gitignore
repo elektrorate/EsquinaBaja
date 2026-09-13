@@ -10,3 +10,6 @@ coverage/
 # yt-dlp local (Windows) / descargado en build de Render (Linux)
 yt-dlp.exe
 yt-dlp
+
+# favicon original (el servido es public/favicon.png)
+/favicon.png
