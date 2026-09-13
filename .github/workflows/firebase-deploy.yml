@@ -29,6 +29,21 @@ jobs:
             echo "ℹ️ No se detectaron credenciales en GitHub Secrets."
           fi
 
+      - name: Detect Firebase Project ID
+        if: steps.check_token.outputs.has_token == 'true'
+        id: detect_project
+        run: |
+          SA_CONTENT='${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.GCP_SA_KEY }}'
+          PID=$(echo "$SA_CONTENT" | jq -r '.project_id // empty' 2>/dev/null || true)
+          if [ -n "$PID" ] && [ "$PID" != "null" ]; then
+            echo "project_id=$PID" >> $GITHUB_OUTPUT
+            echo "Proyecto detectado automáticamente: $PID"
+            # Actualizar .firebaserc con el proyecto real
+            echo "{\"projects\":{\"default\":\"$PID\"}}" > .firebaserc
+          else
+            echo "project_id=" >> $GITHUB_OUTPUT
+          fi
+
       - name: Install Web Dependencies
         if: steps.check_token.outputs.has_token == 'true'
         run: npm install
@@ -52,3 +67,4 @@ jobs:
         env:
           GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.GCP_SA_KEY || secrets.FIREBASE_TOKEN }}
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          PROJECT_ID: ${{ steps.detect_project.outputs.project_id }}
