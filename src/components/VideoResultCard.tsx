@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { VideoMediaInfo, DownloadHistoryItem } from '../types';
 import { downloadFileUniversal } from '../services/clientExtractor';
-import { signInToGoogleAndUpload } from '../services/googleDrive';
+import { signInToGoogleAndUpload, signInToGoogleAndUploadAlbum } from '../services/googleDrive';
 
 interface VideoResultCardProps {
   media: VideoMediaInfo;
@@ -31,6 +31,7 @@ export function VideoResultCard({ media, onToast, onAddHistory }: VideoResultCar
   const [isSavingToDrive, setIsSavingToDrive] = useState(false);
   const [driveLink, setDriveLink] = useState<string | null>(null);
   const [driveError, setDriveError] = useState<string | null>(null);
+  const [selectedSlide, setSelectedSlide] = useState<string | undefined>(undefined);
 
   const cleanFilename = (base: string, ext: string) => {
     const slug = (media.title || 'video')
@@ -114,6 +115,37 @@ export function VideoResultCard({ media, onToast, onAddHistory }: VideoResultCar
   };
 
   const handleSaveToDrive = async () => {
+    // Carousel: save all slides to a dedicated subfolder
+    if (media.carousel && media.carousel.length > 0) {
+      setIsSavingToDrive(true);
+      setDriveError(null);
+      setDriveLink(null);
+      onToast('info', 'Iniciando sesión con Google para guardar el álbum...');
+
+      const albumName = `${media.platform}_${(media.title || 'album').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 35)}`;
+      const files = media.carousel.map((slide, idx) => ({
+        videoUrl: slide.url,
+        filename: `${albumName}_${idx + 1}.${slide.isVideo ? 'mp4' : 'jpg'}`,
+        mimeType: slide.isVideo ? 'video/mp4' : 'image/jpeg',
+      }));
+
+      const result = await signInToGoogleAndUploadAlbum({
+        albumName,
+        files,
+      });
+
+      setIsSavingToDrive(false);
+      if (result.ok && result.webViewLink) {
+        const folderName = result.folderName ? ` en "${result.folderName}"` : '';
+        setDriveLink(result.webViewLink);
+        onToast('success', `Álbum guardado en tu Google Drive${folderName}`);
+      } else {
+        setDriveError(result.error || 'No se pudo guardar el álbum en Google Drive.');
+        onToast('error', result.error || 'No se pudo guardar el álbum en Google Drive.');
+      }
+      return;
+    }
+
     const videoUrl = media.downloadOptions.videoHd || media.downloadOptions.videoNoWatermark;
     if (!videoUrl) {
       onToast('error', 'El video no tiene una URL de descarga disponible.');
@@ -158,6 +190,68 @@ export function VideoResultCard({ media, onToast, onAddHistory }: VideoResultCar
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6">
           {/* Media preview column (5 cols on md) */}
           <div className="md:col-span-5 flex flex-col items-center justify-center">
+          {media.carousel && media.carousel.length > 0 ? (
+            // Carousel gallery preview
+            <div className="w-full max-w-[280px] sm:max-w-none mx-auto flex flex-col items-center">
+              <div className="relative w-full max-w-[280px] sm:max-w-none aspect-square rounded-2xl overflow-hidden bg-black border border-neutral-200 dark:border-neutral-800 shadow-inner flex items-center justify-center">
+                {(() => {
+                  const active = media.carousel[0];
+                  return active.isVideo ? (
+                    <video
+                      src={active.url}
+                      poster={active.thumbnail}
+                      controls
+                      playsInline
+                      preload="metadata"
+                      className="w-full h-full object-contain bg-black"
+                    />
+                  ) : (
+                    <img
+                      src={selectedSlide || active.thumbnail}
+                      alt={media.title}
+                      className="w-full h-full object-contain bg-black"
+                    />
+                  );
+                })()}
+              </div>
+
+              {/* Slide thumbnails strip */}
+              <div className="mt-2 w-full flex gap-1.5 overflow-x-auto pb-1">
+                {media.carousel.map((slide, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    className={`relative shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 transition-all touch-manipulation ${
+                      (selectedSlide || media.carousel[0].thumbnail) === slide.thumbnail && !slide.isVideo
+                        ? 'border-blue-500 ring-1 ring-blue-500/40'
+                        : 'border-neutral-200 dark:border-neutral-700 opacity-70 hover:opacity-100'
+                    }`}
+                    onClick={() => {
+                      setSelectedSlide(slide.thumbnail);
+                      if (slide.isVideo) {
+                        const activeEl = document.getElementById('media-player');
+                        if (activeEl) activeEl.removeAttribute('src');
+                      }
+                    }}
+                  >
+                    <img src={slide.thumbnail} alt="" className="w-full h-full object-cover" />
+                    {slide.isVideo && (
+                      <span className="absolute bottom-0.5 right-0.5 text-[7px] bg-black/70 text-white px-1 rounded leading-none">
+                        MP4
+                      </span>
+                    )}
+                    <span className="absolute top-0.5 left-0.5 text-[7px] bg-black/70 text-white w-4 h-4 rounded-full flex items-center justify-center font-bold leading-none">
+                      {idx + 1}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400 text-center">
+                Álbum de Instagram — {media.carousel.length} {media.carousel.length === 1 ? 'diapositiva' : 'diapositivas'}
+              </p>
+            </div>
+          ) : (
             <div className="relative w-full max-w-[280px] sm:max-w-none mx-auto aspect-[9/16] max-h-[380px] sm:max-h-[420px] rounded-2xl overflow-hidden bg-black border border-neutral-200 dark:border-neutral-800 shadow-inner flex items-center justify-center">
               {media.downloadOptions.videoNoWatermark || media.downloadOptions.videoHd ? (
                 <video
@@ -190,6 +284,7 @@ export function VideoResultCard({ media, onToast, onAddHistory }: VideoResultCar
                 </span>
               </div>
             </div>
+          )}
 
             {/* Duration pill if available */}
             {media.duration ? (
@@ -402,7 +497,9 @@ export function VideoResultCard({ media, onToast, onAddHistory }: VideoResultCar
                     <span className="truncate">
                       {isSavingToDrive
                         ? 'Guardando en Google Drive...'
-                        : 'Guardar en Google Drive'}
+                        : media.carousel && media.carousel.length > 0
+                          ? 'Guardar todo (álbum) en Google Drive'
+                          : 'Guardar en Google Drive'}
                     </span>
                   </div>
                   <span className="text-[10px] sm:text-xs bg-white/20 px-2 py-0.5 rounded-md font-bold shrink-0">

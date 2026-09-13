@@ -1,5 +1,14 @@
 export type Platform = 'tiktok' | 'instagram' | 'unknown';
 
+export interface CarouselEntry {
+  url: string;
+  title: string;
+  thumbnail: string;
+  isVideo: boolean;
+  videoUrl?: string;
+  thumbnailUrl?: string;
+}
+
 export interface VideoMediaInfo {
   id: string;
   platform: 'tiktok' | 'instagram';
@@ -18,6 +27,7 @@ export interface VideoMediaInfo {
     audio?: string;
     thumbnail?: string;
   };
+  carousel?: CarouselEntry[];
   stats?: {
     likes?: number;
     views?: number;

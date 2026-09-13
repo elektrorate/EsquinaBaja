@@ -134,6 +134,54 @@ async function extractWithYtDlp(url: string) {
   }
 }
 
+// yt-dlp carousel/album extraction: returns all slides/posts (images + videos)
+async function extractCarouselWithYtDlp(url: string) {
+  try {
+    const { stdout } = await execFileAsync(
+      YTDLP_BIN,
+      ['--no-warnings', '-J', url],
+      { timeout: 90000, windowsHide: true, maxBuffer: 20 * 1024 * 1024 }
+    );
+    const info = JSON.parse(stdout);
+
+    // A carousel in yt-dlp appears as a playlist with multiple entries
+    const entries: any[] =
+      info._type === 'playlist' && Array.isArray(info.entries) ? info.entries : [];
+    if (entries.length <= 1) return null;
+
+    const items = entries
+      .filter((entry: any) => entry && !entry._type)
+      .map((entry: any, index: number) => {
+        let url = entry.url || '';
+        if (url && !url.startsWith('http')) url = '';
+        if (!url && Array.isArray(entry.formats)) {
+          const f = [...entry.formats].reverse().find((x: any) => x.url && String(x.url).startsWith('http'));
+          url = f?.url || '';
+        }
+        if (!url) return null;
+        const isVideo = /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url) || entry.vcodec !== 'none' || entry.ext === 'mp4';
+        const ext = isVideo ? 'mp4' : 'jpg';
+        return {
+          url,
+          title: `${entry.id || index + 1}.${ext}`,
+          thumbnail: typeof entry.thumbnail === 'string' && entry.thumbnail.startsWith('http') ? entry.thumbnail : url,
+          isVideo,
+        };
+      })
+      .filter(Boolean);
+
+    if (items.length <= 1) return null;
+    return {
+      entries: items,
+      title: typeof info.title === 'string' ? info.title : undefined,
+      thumbnail: typeof info.thumbnail === 'string' && info.thumbnail.startsWith('http') ? info.thumbnail : items[0].thumbnail,
+    };
+  } catch (err: any) {
+    console.warn('yt-dlp carousel extraction failed:', err.message);
+    return null;
+  }
+}
+
 // 2. Instagram extraction
 async function extractInstagram(url: string) {
   try {
@@ -260,20 +308,30 @@ async function extractInstagram(url: string) {
       }
     }
 
+    // Try carousel/album extraction (multi-slide Instagram posts)
+    let carouselEntries: any[] | undefined = undefined;
+    const carouselInfo = await extractCarouselWithYtDlp(cleanUrl);
+    if (carouselInfo && carouselInfo.entries.length > 1) {
+      carouselEntries = carouselInfo.entries;
+      if (!title && carouselInfo.title) title = carouselInfo.title;
+      if (!coverUrl && carouselInfo.thumbnail) coverUrl = carouselInfo.thumbnail;
+    }
+
     // If still no videoUrl, we cannot deliver the real video - do not substitute a fake video
-    if (!videoUrl) {
+    if (!videoUrl && !carouselEntries) {
       throw new Error('Meta (Instagram) ha bloqueado el acceso a este video. La cuenta puede ser privada o requerir inicio de sesión.');
     }
 
     const shortcodeMatch = cleanUrl.match(/\/(p|reel|reels|tv)\/([A-Za-z0-9_-]+)/);
     const shortcode = shortcodeMatch ? shortcodeMatch[2] : 'ig_' + Date.now();
-    const finalCover = coverUrl || `https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80`;
+    const finalCover = coverUrl || (carouselEntries?.[0]?.thumbnail) || `https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80`;
+    const mainVideoUrl = videoUrl || (carouselEntries?.[0]?.url);
 
     return {
       id: shortcode,
       platform: 'instagram' as const,
       originalUrl: url,
-      title: title || (oEmbedData?.title ? oEmbedData.title : 'Reel de Instagram'),
+      title: title || (oEmbedData?.title ? oEmbedData.title : carouselEntries ? 'Álbum de Instagram' : 'Reel de Instagram'),
       author: {
         name: authorName,
         username: `@${authorName.toLowerCase().replace(/\s+/g, '')}`,
@@ -281,11 +339,12 @@ async function extractInstagram(url: string) {
       },
       thumbnail: finalCover,
       downloadOptions: {
-        videoNoWatermark: videoUrl,
-        videoHd: videoUrl,
+        videoNoWatermark: mainVideoUrl,
+        videoHd: mainVideoUrl,
         audio: undefined,
         thumbnail: finalCover,
       },
+      carousel: carouselEntries,
       stats: {
         likes: undefined,
       },
@@ -417,6 +476,106 @@ app.get('/api/proxy-download', async (req: Request, res: Response) => {
   }
 });
 
+// Google Drive helpers
+async function googleFindFolder(accessToken: string, folderName: string, parentId?: string): Promise<string | null> {
+  const q = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false` +
+    (parentId ? ` and '${parentId}' in parents` : ` and 'root' in parents`);
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=1`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.files?.[0]?.id || null;
+}
+
+async function googleCreateFolder(accessToken: string, folderName: string, parentId?: string): Promise<string | null> {
+  const res = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: folderName,
+      mimeType: 'application/vnd.google-apps.folder',
+      ...(parentId ? { parents: [parentId] } : {}),
+    }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.id || null;
+}
+
+async function googleResolveFolder(accessToken: string, folderName: string, parentId?: string): Promise<string | null> {
+  const existing = await googleFindFolder(accessToken, folderName, parentId);
+  if (existing) return existing;
+  return googleCreateFolder(accessToken, folderName, parentId);
+}
+
+async function googleUploadBuffer(
+  accessToken: string,
+  buffer: Buffer,
+  filename: string,
+  mimeType: string,
+  parentId?: string
+): Promise<{ id?: string; webViewLink?: string } | null> {
+  const metadataBody = JSON.stringify({
+    name: filename,
+    mimeType,
+    ...(parentId ? { parents: [parentId] } : {}),
+  });
+
+  const sessionRes = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Upload-Content-Type': mimeType,
+        'X-Upload-Content-Length': String(buffer.length),
+      },
+      body: metadataBody,
+    }
+  );
+
+  if (!sessionRes.ok) return null;
+
+  const uploadUri = sessionRes.headers.get('location');
+  if (!uploadUri) return null;
+
+  const uploadRes = await fetch(uploadUri, {
+    method: 'PUT',
+    headers: { 'Content-Type': mimeType },
+    body: buffer,
+  });
+
+  if (!uploadRes.ok) return null;
+  const fileData = await uploadRes.json();
+  return {
+    id: fileData.id,
+    webViewLink: fileData.webViewLink || `https://drive.google.com/file/d/${fileData.id}/view`,
+  };
+}
+
+async function googleDownloadMedia(videoUrl: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+  try {
+    const mediaRes = await fetch(videoUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Referer': videoUrl.includes('tiktok') ? 'https://www.tiktok.com/' : 'https://www.instagram.com/',
+      },
+    });
+    if (!mediaRes.ok || !mediaRes.body) return null;
+    const buffer = Buffer.from(await mediaRes.arrayBuffer());
+    const contentType = mediaRes.headers.get('content-type') || 'video/mp4';
+    return { buffer, contentType };
+  } catch {
+    return null;
+  }
+}
+
 // Google Drive: download video from source URL and upload it to the user's Drive
 app.post('/api/drive/upload', async (req: Request, res: Response) => {
   try {
@@ -427,130 +586,95 @@ app.post('/api/drive/upload', async (req: Request, res: Response) => {
     }
 
     // 1. Download the video bytes from the source (streaming)
-    const mediaRes = await fetch(videoUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Referer': videoUrl.includes('tiktok') ? 'https://www.tiktok.com/' : 'https://www.instagram.com/',
-      },
-    });
-
-    if (!mediaRes.ok || !mediaRes.body) {
+    const media = await googleDownloadMedia(videoUrl);
+    if (!media) {
       res.status(502).json({ success: false, error: 'No se pudo descargar el video desde el servidor de origen.' });
       return;
     }
 
-    const mediaBuffer = Buffer.from(await mediaRes.arrayBuffer());
-    const contentType =
-      mimeType || mediaRes.headers.get('content-type') || 'video/mp4';
+    const contentType = mimeType || media.contentType || 'video/mp4';
     const safeFilename = filename.replace(/[^\w\-.]/g, '_').slice(-80);
 
     const FOLDER_NAME = process.env.DRIVE_FOLDER_NAME || 'Esquina Baja';
 
     // 2a. Find (or create) the target folder in the user's Drive
-    const existingRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`)}&fields=files(id,name)&pageSize=1`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
-
-    let folderId = 'root';
-    if (existingRes.ok) {
-      const existingData = await existingRes.json();
-      const folder = existingData.files?.[0];
-      if (folder) {
-        folderId = folder.id;
-      }
-    }
-
-    if (folderId === 'root') {
-      const createFolderRes = await fetch('https://www.googleapis.com/drive/v3/files', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: FOLDER_NAME,
-          mimeType: 'application/vnd.google-apps.folder',
-        }),
-      });
-
-      if (createFolderRes.ok) {
-        const createdFolder = await createFolderRes.json();
-        folderId = createdFolder.id;
-      }
-    }
+    const folderId = await googleResolveFolder(accessToken, FOLDER_NAME) || 'root';
 
     // 2b. Create an empty file in Drive via resumable upload session
-    const metadataBody = JSON.stringify({
-      name: safeFilename,
-      mimeType: contentType,
-      parents: [folderId],
-    });
-
-    const sessionRes = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json; charset=UTF-8',
-          'X-Upload-Content-Type': contentType,
-          'X-Upload-Content-Length': String(mediaBuffer.length),
-        },
-        body: metadataBody,
-      }
-    );
-
-    if (!sessionRes.ok) {
-      const errText = await sessionRes.text();
+    const uploaded = await googleUploadBuffer(accessToken, media.buffer, safeFilename, contentType, folderId);
+    if (!uploaded) {
       res.status(401).json({
         success: false,
         error: 'Google rechazó la sesión. Tu sesión de Google pudo expirar.',
-        details: errText.slice(0, 300),
       });
       return;
     }
 
-    const uploadUri = sessionRes.headers.get('location');
-    if (!uploadUri) {
-      res.status(500).json({ success: false, error: 'Google no devolvió una sesión de subida válida.' });
-      return;
-    }
-
-    // 3. Upload the bytes to the resumable session
-    const uploadRes = await fetch(uploadUri, {
-      method: 'PUT',
-      headers: { 'Content-Type': contentType },
-      body: mediaBuffer,
-    });
-
-    if (!uploadRes.ok) {
-      const errText = await uploadRes.text();
-      res.status(502).json({
-        success: false,
-        error: 'Error al subir el archivo a Google Drive.',
-        details: errText.slice(0, 300),
-      });
-      return;
-    }
-
-    const fileData = await uploadRes.json();
     res.json({
       success: true,
       data: {
-        fileId: fileData.id,
-        name: fileData.name,
-        mimeType: fileData.mimeType,
+        fileId: uploaded.id,
+        name: safeFilename,
+        mimeType: contentType,
         folderId,
         folderName: FOLDER_NAME,
-        webViewLink: fileData.webViewLink || `https://drive.google.com/file/d/${fileData.id}/view`,
+        webViewLink: uploaded.webViewLink,
       },
     });
   } catch (driveErr: any) {
     console.error('Google Drive upload error:', driveErr.message);
     res.status(500).json({ success: false, error: 'Ocurrió un error al guardar en Google Drive.' });
+  }
+});
+
+// Google Drive: upload a whole carousel/album into a dedicated subfolder
+app.post('/api/drive/upload-album', async (req: Request, res: Response) => {
+  try {
+    const { accessToken, albumName, files } = req.body;
+    if (!accessToken || !albumName || !Array.isArray(files) || files.length === 0) {
+      res.status(400).json({ success: false, error: 'Faltan datos para guardar el álbum en Google Drive.' });
+      return;
+    }
+
+    const FOLDER_NAME = process.env.DRIVE_FOLDER_NAME || 'Esquina Baja';
+    const rootFolderId = await googleResolveFolder(accessToken, FOLDER_NAME) || 'root';
+
+    // Create a subfolder for this album (sanitized name)
+    const safeAlbumName = String(albumName).replace(/[^\w\- ]/g, '').slice(0, 60) || 'Álbum de Instagram';
+    const albumFolderId = await googleResolveFolder(accessToken, safeAlbumName, rootFolderId) || rootFolderId;
+
+    let erroredCount = 0;
+    let uploadedCount = 0;
+
+    for (const file of files) {
+      if (!file || !file.videoUrl) continue;
+      const media = await googleDownloadMedia(file.videoUrl);
+      if (!media) {
+        erroredCount++;
+        continue;
+      }
+      const mimeType = file.mimeType || media.contentType || 'video/mp4';
+      const safeFilename = String(file.filename || `slide_${uploadedCount + 1}.jpg`)
+        .replace(/[^\w\-.]/g, '_')
+        .slice(-80);
+      const uploaded = await googleUploadBuffer(accessToken, media.buffer, safeFilename, mimeType, albumFolderId);
+      if (uploaded) uploadedCount++;
+      else erroredCount++;
+    }
+
+    res.json({
+      success: uploadedCount > 0,
+      data: {
+        uploadedCount,
+        erroredCount,
+        albumName: safeAlbumName,
+        folderName: FOLDER_NAME,
+        folderLink: `https://drive.google.com/drive/folders/${albumFolderId}`,
+      },
+    });
+  } catch (driveErr: any) {
+    console.error('Google Drive album upload error:', driveErr.message);
+    res.status(500).json({ success: false, error: 'Ocurrió un error al guardar el álbum en Google Drive.' });
   }
 });
 

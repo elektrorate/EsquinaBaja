@@ -63,6 +63,13 @@ export interface DriveUploadResult {
   webViewLink?: string;
   folderName?: string;
   error?: string;
+  erroredCount?: number;
+}
+
+export interface DriveAlbumFile {
+  videoUrl: string;
+  filename: string;
+  mimeType?: string;
 }
 
 export async function uploadVideoToDrive(opts: {
@@ -89,6 +96,55 @@ export async function uploadVideoToDrive(opts: {
     return { ok: false, error: json.error || 'Error al guardar en Google Drive.' };
   } catch (err: any) {
     return { ok: false, error: err?.message || 'No se pudo conectar con el servidor.' };
+  }
+}
+
+export async function uploadAlbumToDrive(opts: {
+  token: string;
+  files: DriveAlbumFile[];
+  albumName: string;
+}): Promise<DriveUploadResult> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/drive/upload-album`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        accessToken: opts.token,
+        albumName: opts.albumName,
+        files: opts.files,
+      }),
+    });
+    const json = await res.json();
+    if (res.ok && json.success) {
+      return {
+        ok: true,
+        folderName: json.data?.folderName,
+        webViewLink: json.data?.folderLink,
+        erroredCount: json.data?.erroredCount,
+      };
+    }
+    return { ok: false, error: json.error || 'Error al guardar el álbum en Google Drive.' };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || 'No se pudo conectar con el servidor.' };
+  }
+}
+
+export async function signInToGoogleAndUploadAlbum(opts: {
+  files: DriveAlbumFile[];
+  albumName: string;
+}): Promise<DriveUploadResult> {
+  if (!GOOGLE_CLIENT_ID) {
+    return {
+      ok: false,
+      error: 'Falta configurar VITE_GOOGLE_CLIENT_ID en el backend/hosting.',
+    };
+  }
+  try {
+    await loadGsiScript();
+    const token = await getAccessToken(GOOGLE_CLIENT_ID);
+    return await uploadAlbumToDrive({ token, ...opts });
+  } catch (err: any) {
+    return { ok: false, error: err?.message || 'No se pudo guardar el álbum en Google Drive.' };
   }
 }
 
