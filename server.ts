@@ -10,6 +10,7 @@ const execFileAsync = promisify(execFile);
 const YTDLP_BIN = process.env.YTDLP_BIN || path.join(process.cwd(), process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
 
 // Optional Instagram session cookies (Netscape format) to avoid anonymous rate-limits.
+// Loaded from local file ig_cookies.txt, or from the IG_COOKIES_TXT env var (Render).
 const IG_COOKIES_PATH = path.join(process.cwd(), 'ig_cookies.txt');
 if (process.env.IG_COOKIES_TXT) {
   try {
@@ -20,7 +21,7 @@ if (process.env.IG_COOKIES_TXT) {
   }
 }
 function ytDlpCookiesArgs(): string[] {
-  if (process.env.IG_COOKIES_TXT && fs.existsSync(IG_COOKIES_PATH)) {
+  if (fs.existsSync(IG_COOKIES_PATH)) {
     return ['--cookies', IG_COOKIES_PATH];
   }
   return [];

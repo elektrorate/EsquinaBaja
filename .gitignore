@@ -11,5 +11,8 @@ coverage/
 yt-dlp.exe
 yt-dlp
 
+# cookies de sesion de Instagram (NUNCA commitear)
+ig_cookies.txt
+
 # favicon original (el servido es public/favicon.png)
 /favicon.png
