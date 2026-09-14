@@ -10,14 +10,16 @@ const execFileAsync = promisify(execFile);
 const YTDLP_BIN = process.env.YTDLP_BIN || path.join(process.cwd(), process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
 
 // Optional session cookies (Netscape format) to avoid anonymous rate-limits.
-// Loaded from local files ig_cookies.txt / fb_cookies.txt, or from the
-// IG_COOKIES_TXT / FB_COOKIES_TXT env vars (Render).
+// Loaded from local files ig_cookies.txt / fb_cookies.txt / tw_cookies.txt, or
+// from the IG_COOKIES_TXT / FB_COOKIES_TXT / TW_COOKIES_TXT env vars (Render).
 const IG_COOKIES_PATH = path.join(process.cwd(), 'ig_cookies.txt');
 const FB_COOKIES_PATH = path.join(process.cwd(), 'fb_cookies.txt');
+const TW_COOKIES_PATH = path.join(process.cwd(), 'tw_cookies.txt');
 
 const COOKIE_ENV_MAP: Record<string, string> = {
   IG_COOKIES_TXT: IG_COOKIES_PATH,
   FB_COOKIES_TXT: FB_COOKIES_PATH,
+  TW_COOKIES_TXT: TW_COOKIES_PATH,
 };
 
 for (const [envVar, filePath] of Object.entries(COOKIE_ENV_MAP)) {
@@ -37,16 +39,16 @@ for (const [envVar, filePath] of Object.entries(COOKIE_ENV_MAP)) {
   }
 }
 
-function ytDlpCookiesArgs(hostKey: 'instagram' | 'facebook'): string[] {
-  const filePath = hostKey === 'facebook' ? FB_COOKIES_PATH : IG_COOKIES_PATH;
+function ytDlpCookiesArgs(hostKey: 'instagram' | 'facebook' | 'twitter'): string[] {
+  const filePath = hostKey === 'facebook' ? FB_COOKIES_PATH : hostKey === 'twitter' ? TW_COOKIES_PATH : IG_COOKIES_PATH;
   if (fs.existsSync(filePath)) {
     return ['--cookies', filePath];
   }
   return [];
 }
 
-function readCookieHeader(hostKey: 'instagram' | 'facebook'): string | undefined {
-  const filePath = hostKey === 'facebook' ? FB_COOKIES_PATH : IG_COOKIES_PATH;
+function readCookieHeader(hostKey: 'instagram' | 'facebook' | 'twitter'): string | undefined {
+  const filePath = hostKey === 'facebook' ? FB_COOKIES_PATH : hostKey === 'twitter' ? TW_COOKIES_PATH : IG_COOKIES_PATH;
   if (!fs.existsSync(filePath)) return undefined;
   const raw = fs.readFileSync(filePath, 'utf8').replace(/\r/g, '');
   const cookieLine = raw.split('\n')
@@ -84,7 +86,7 @@ function cacheSet(key: string, value: string): void {
 async function runYtDlp(
   args: string[],
   timeoutMs: number,
-  hostKey: 'instagram' | 'facebook' = 'instagram'
+  hostKey: 'instagram' | 'facebook' | 'twitter' = 'instagram'
 ): Promise<{ stdout: string; stderr: string }> {
   const base = ytDlpCookiesArgs(hostKey).concat(args);
   const attemptList: string[][] = hostKey === 'instagram'
@@ -111,8 +113,24 @@ const PORT = Number(process.env.PORT) || 8040;
 
 app.use(express.json());
 
-// Proxy images from Instagram CDN (the browser can't fetch them directly because
-// Instagram blocks requests with a non-instagram.com Referer).
+// Pick the right Referer + cookies for a given CDN media URL
+function mediaRequestHeaders(mediaUrl: string): Record<string, string> {
+  const isTikTok = mediaUrl.includes('tiktok');
+  const isFacebook = mediaUrl.includes('facebook') || mediaUrl.includes('fbcdn');
+  const isTwitter = mediaUrl.includes('twimg');
+  const isInstagram = !isTikTok && !isFacebook && !isTwitter;
+  const referer = isTikTok ? 'https://www.tiktok.com/' : isFacebook ? 'https://www.facebook.com/' : isTwitter ? 'https://x.com/' : 'https://www.instagram.com/';
+  const cookies = readCookieHeader(isFacebook ? 'facebook' : isTwitter ? 'twitter' : 'instagram');
+  const headers: Record<string, string> = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Referer': referer,
+  };
+  if (cookies) headers['Cookie'] = cookies;
+  return headers;
+}
+
+// Proxy images from social CDNs (the browser can't fetch them directly because
+// IG/FB/X block requests with a foreign Referer).
 app.get('/api/proxy-image', async (req: Request, res: Response) => {
   try {
     const url = req.query.url as string;
@@ -120,12 +138,7 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Missing or invalid url param' });
       return;
     }
-    const headers: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    };
-    const igCookie = readCookieHeader('instagram');
-    if (igCookie) headers['Cookie'] = igCookie;
-    const igRes = await fetch(url, { headers, redirect: 'follow' });
+    const igRes = await fetch(url, { headers: mediaRequestHeaders(url), redirect: 'follow' });
     if (!igRes.ok) {
       res.status(igRes.status).json({ error: `Upstream ${igRes.status}` });
       return;
@@ -163,9 +176,10 @@ app.use('/api', (req, res, next) => {
 });
 
 // Helper to determine platform from URL
-function detectPlatform(urlStr: string): 'tiktok' | 'instagram' | 'facebook' | 'unknown' {
+function detectPlatform(urlStr: string): 'tiktok' | 'instagram' | 'facebook' | 'twitter' | 'unknown' {
   const lower = urlStr.toLowerCase().trim();
   if (lower.includes('tiktok.com')) return 'tiktok';
+  if (lower.includes('twitter.com') || lower.includes('x.com') || lower.includes('t.co')) return 'twitter';
   if (lower.includes('facebook.com') || lower.includes('fb.watch') || lower.includes('fb.me')) return 'facebook';
   if (lower.includes('instagram.com') || lower.includes('instagr.am')) return 'instagram';
   return 'unknown';
@@ -289,7 +303,7 @@ async function extractTikTok(url: string) {
 }
 
 // yt-dlp fallback: extracts direct media URL + metadata without any API key/quota
-async function extractWithYtDlp(url: string, hostKey: 'instagram' | 'facebook' = 'instagram') {
+async function extractWithYtDlp(url: string, hostKey: 'instagram' | 'facebook' | 'twitter' = 'instagram') {
   const cacheKey = `single:${hostKey}:${url}`;
   const cached = cacheGet(cacheKey);
   const raw = cached || await (async () => {
@@ -311,6 +325,7 @@ async function extractWithYtDlp(url: string, hostKey: 'instagram' | 'facebook' =
   if (!raw) return null;
   try {
     const info = JSON.parse(raw.split('\n@RATE@\n')[0]);
+    if (!info || typeof info !== 'object') return null;
     let videoUrl = info.url || '';
     if (videoUrl && !videoUrl.startsWith('http')) videoUrl = '';
     if (!videoUrl && Array.isArray(info.formats)) {
@@ -362,6 +377,7 @@ async function extractCarouselWithYtDlp(url: string) {
 
   try {
     const info = JSON.parse(stdout);
+    if (!info || typeof info !== 'object') return null;
 
     // A carousel in yt-dlp appears as a playlist with multiple entries
     const entries: any[] =
@@ -697,7 +713,100 @@ async function extractFacebook(rawUrl: string) {
   }
 }
 
-// API Routes
+// 4. Twitter / X extraction
+async function extractTwitter(rawUrl: string) {
+  try {
+    const cleanUrl = rawUrl.split('?')[0].replace(/\/$/, '');
+    let target = cleanUrl;
+
+    // Resolve t.co / x.com short links to the full status URL
+    if (/t\.co|twitter\.com|\.x\.com/i.test(target)) {
+      try {
+        const redir = await fetch(target, { method: 'HEAD', redirect: 'follow' });
+        if (redir.url && redir.url.includes('status/')) target = redir.url;
+      } catch {
+        // keep original target
+      }
+    }
+
+    // yt-dlp for public tweets (videos/gifs). X may require cookies; if not
+    // provided we still try anonymously (public tweets usually work).
+    let ytInfo = await extractWithYtDlp(target, 'twitter');
+    let videoUrl = ytInfo?.videoUrl || '';
+    let coverUrl = ytInfo?.thumbnail || '';
+    let title = ytInfo?.title || '';
+    let duration = ytInfo?.duration;
+
+    // Fallback: HTML scrape of og:video / twitter meta
+    if (!videoUrl) {
+      try {
+        const htmlRes = await fetch(target, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+          },
+        });
+        if (htmlRes.ok) {
+          const html = await htmlRes.text();
+          const ogVideo = (html.match(/<meta\s+property="og:video(?::secure_url|:url)?"\s+content="([^"]+)"/i) ||
+                           html.match(/<meta\s+content="([^"]+)"\s+property="og:video(?::secure_url|:url)?"/i))?.[1]?.replace(/&amp;/g, '&');
+          const metaVideo = (html.match(/<meta\s+name="twitter:player:stream"\s+content="([^"]+)"/i) ||
+                             html.match(/<meta\s+content="([^"]+)"\s+name="twitter:player:stream"/i))?.[1]?.replace(/&amp;/g, '&');
+          const found = ogVideo || metaVideo;
+          if (found && found.startsWith('http')) videoUrl = found;
+
+          if (!coverUrl) {
+            const ogImg = (html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i) ||
+                           html.match(/<meta\s+content="([^"]+)"\s+property="og:image"/i))?.[1]?.replace(/&amp;/g, '&');
+            if (ogImg && ogImg.startsWith('http')) coverUrl = ogImg;
+          }
+          if (!title) {
+            const ogTitle = (html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i) ||
+                             html.match(/<meta\s+content="([^"]+)"\s+property="og:title"/i))?.[1]?.replace(/&amp;/g, '&');
+            if (ogTitle) title = ogTitle;
+          }
+        }
+      } catch (e) {
+        console.warn('Twitter HTML fetch warning:', e);
+      }
+    }
+
+    if (!videoUrl) {
+      throw new Error('X (Twitter) ha bloqueado el acceso a este video. El tweet puede ser privado, eliminado o requerir inicio de sesión.');
+    }
+
+    const statusMatch = target.match(/\/status\/(\d+)/);
+    const tweetId = statusMatch ? statusMatch[1] : 'tw_' + Date.now();
+
+    return {
+      id: tweetId,
+      platform: 'twitter' as const,
+      originalUrl: rawUrl,
+      title: title || 'Video de Twitter / X',
+      author: {
+        name: 'Twitter / X',
+        username: '@twitter',
+        avatar: undefined,
+      },
+      thumbnail: coverUrl || undefined,
+      duration,
+      downloadOptions: {
+        videoNoWatermark: videoUrl,
+        videoHd: videoUrl,
+        audio: undefined,
+        thumbnail: coverUrl || undefined,
+      },
+      stats: {
+        likes: undefined,
+      },
+      isFallback: false,
+    };
+  } catch (err: any) {
+    console.error('Twitter extraction error:', err.message);
+    throw err;
+  }
+}
 app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
@@ -717,7 +826,7 @@ app.post('/api/extract', async (req: Request, res: Response) => {
     if (platform === 'unknown') {
       res.status(400).json({
         success: false,
-        error: 'El enlace no parece ser de TikTok, Instagram ni Facebook. Asegúrate de que contenga tiktok.com, instagram.com o facebook.com.',
+        error: 'El enlace no parece ser de TikTok, Instagram, Facebook ni X (Twitter). Asegúrate de que contenga tiktok.com, instagram.com, facebook.com, twitter.com o x.com.',
       });
       return;
     }
@@ -802,6 +911,26 @@ app.post('/api/extract', async (req: Request, res: Response) => {
         return;
       }
     }
+
+    if (platform === 'twitter') {
+      try {
+        const data = await extractTwitter(trimmedUrl);
+        res.json({
+          success: true,
+          data,
+          message: data.isFallback
+            ? 'X (Twitter) requiere a veces confirmación. Te proveemos la mejor resolución disponible.'
+            : undefined,
+        });
+        return;
+      } catch (twErr: any) {
+        res.status(422).json({
+          success: false,
+          error: 'No se pudo procesar el enlace de X (Twitter). Verifica que el tweet sea público o que no haya sido eliminado.',
+        });
+        return;
+      }
+    }
   } catch (globalErr: any) {
     console.error('Error in /api/extract:', globalErr);
     res.status(500).json({ success: false, error: 'Ocurrió un error inesperado al procesar el video.' });
@@ -821,11 +950,7 @@ app.get('/api/proxy-download', async (req: Request, res: Response) => {
 
     const headRes = await fetch(mediaUrl, {
       method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Referer': mediaUrl.includes('tiktok') ? 'https://www.tiktok.com/' : mediaUrl.includes('facebook') || mediaUrl.includes('fbcdn') ? 'https://www.facebook.com/' : 'https://www.instagram.com/',
-        ...(readCookieHeader(mediaUrl.includes('facebook') || mediaUrl.includes('fbcdn') ? 'facebook' : 'instagram') ? { Cookie: readCookieHeader(mediaUrl.includes('facebook') || mediaUrl.includes('fbcdn') ? 'facebook' : 'instagram')! } : {}),
-      },
+      headers: mediaRequestHeaders(mediaUrl),
     });
 
     if (!headRes.ok || !headRes.body) {
@@ -950,11 +1075,7 @@ async function googleUploadBuffer(
 async function googleDownloadMedia(videoUrl: string): Promise<{ buffer: Buffer; contentType: string } | null> {
   try {
     const mediaRes = await fetch(videoUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Referer': videoUrl.includes('tiktok') ? 'https://www.tiktok.com/' : videoUrl.includes('facebook') || videoUrl.includes('fbcdn') ? 'https://www.facebook.com/' : 'https://www.instagram.com/',
-        ...(readCookieHeader(videoUrl.includes('facebook') || videoUrl.includes('fbcdn') ? 'facebook' : 'instagram') ? { Cookie: readCookieHeader(videoUrl.includes('facebook') || videoUrl.includes('fbcdn') ? 'facebook' : 'instagram')! } : {}),
-      },
+      headers: mediaRequestHeaders(videoUrl),
     });
     if (!mediaRes.ok || !mediaRes.body) return null;
     const buffer = Buffer.from(await mediaRes.arrayBuffer());

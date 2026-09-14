@@ -182,12 +182,15 @@ export default function App() {
       setMediaResult(null);
       const isIg = targetUrl.toLowerCase().includes('instagram.com') || targetUrl.toLowerCase().includes('instagr.am');
       const isFb = targetUrl.toLowerCase().includes('facebook.com') || targetUrl.toLowerCase().includes('fb.watch') || targetUrl.toLowerCase().includes('fb.me');
+      const isTw = targetUrl.toLowerCase().includes('twitter.com') || targetUrl.toLowerCase().includes('x.com') || targetUrl.toLowerCase().includes('t.co');
       if (isIg) {
         setCurrentInstagramUrl(targetUrl);
         setIsInstagramNoticeOpen(true);
         addToast('info', 'Aviso de Instagram: Revisa las opciones en pantalla.');
       } else if (isFb) {
         addToast('error', errorMessage || 'No se pudo obtener el video de Facebook. Asegúrate de que sea un video público de un reel, watch o página.');
+      } else if (isTw) {
+        addToast('error', errorMessage || 'No se pudo obtener el video de X (Twitter). Asegúrate de que sea un tweet público con video o GIF.');
       } else {
         addToast('error', errorMessage || 'No se pudo obtener el video real. Asegúrate de que sea un video público.');
       }
@@ -235,7 +238,7 @@ export default function App() {
       <footer className="w-full border-t border-neutral-200 dark:border-neutral-900 bg-white/50 dark:bg-transparent py-5 sm:py-6 px-3 sm:px-4 text-center text-xs text-neutral-500 dark:text-neutral-400 transition-colors">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
           <p className="text-[11px] sm:text-xs">
-            Descargador de Videos para TikTok, Instagram y Facebook · Gratuito y sin marcas de agua
+            Descargador de Videos para TikTok, Instagram, Facebook y X · Gratuito y sin marcas de agua
           </p>
           <div className="flex items-center justify-center flex-wrap gap-2 sm:gap-4 text-[11px] sm:text-xs">
             <button

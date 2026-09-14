@@ -114,10 +114,12 @@ export function DownloadHistory({
                           ? 'bg-cyan-100 dark:bg-cyan-950 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/60'
                           : item.platform === 'facebook'
                             ? 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60'
-                            : 'bg-pink-100 dark:bg-pink-950 text-pink-800 dark:text-pink-300 border border-pink-200 dark:border-pink-800/60'
+                            : item.platform === 'twitter'
+                              ? 'bg-neutral-200 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-neutral-700'
+                              : 'bg-pink-100 dark:bg-pink-950 text-pink-800 dark:text-pink-300 border border-pink-200 dark:border-pink-800/60'
                       }`}
                     >
-                      {item.platform === 'facebook' ? 'facebook' : item.platform}
+                      {item.platform === 'facebook' ? 'facebook' : item.platform === 'twitter' ? 'x/twitter' : item.platform}
                     </span>
                     <span className="text-[10px] sm:text-[11px] text-neutral-500 truncate">
                       {formatDate(item.downloadDate)}

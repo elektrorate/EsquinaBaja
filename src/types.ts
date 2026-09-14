@@ -1,4 +1,4 @@
-export type Platform = 'tiktok' | 'instagram' | 'facebook' | 'unknown';
+export type Platform = 'tiktok' | 'instagram' | 'facebook' | 'twitter' | 'unknown';
 
 export interface CarouselEntry {
   url: string;
@@ -11,7 +11,7 @@ export interface CarouselEntry {
 
 export interface VideoMediaInfo {
   id: string;
-  platform: 'tiktok' | 'instagram' | 'facebook';
+  platform: 'tiktok' | 'instagram' | 'facebook' | 'twitter';
   originalUrl: string;
   title: string;
   author: {
@@ -47,7 +47,7 @@ export interface ExtractResponse {
 
 export interface DownloadHistoryItem {
   id: string;
-  platform: 'tiktok' | 'instagram' | 'facebook';
+  platform: 'tiktok' | 'instagram' | 'facebook' | 'twitter';
   title: string;
   thumbnail: string;
   author: string;
