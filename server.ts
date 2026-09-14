@@ -670,30 +670,6 @@ app.post('/api/extract', async (req: Request, res: Response) => {
   }
 });
 
-// TEMP diagnostic: run yt-dlp against a URL and return raw stdout/stderr
-app.get('/api/diag-ytdlp', async (req: Request, res: Response) => {
-  const target = String(req.query.url || '');
-  if (!target.startsWith('http')) {
-    res.status(400).json({ error: 'url inválida' });
-    return;
-  }
-  try {
-    const { stdout, stderr } = await execFileAsync(
-      YTDLP_BIN,
-      ['--no-warnings', '-J', target],
-      { timeout: 60000, windowsHide: true, maxBuffer: 20 * 1024 * 1024 }
-    );
-    res.json({ exit: 0, stdoutLen: (stdout || '').length, stderr: (stderr || '').slice(0, 1500), stdout: (stdout || '').slice(0, 1200) });
-  } catch (err: any) {
-    res.json({
-      exit: err.code ?? 'non-zero',
-      stderr: (err.stderr || '').slice(0, 1500),
-      stdout: (err.stdout || '').slice(0, 1200),
-      stdoutLen: (err.stdout || '').length,
-    });
-  }
-});
-
 // Proxy download to force real file download (avoiding CORS, inline play & hotlinking blocks)
 app.get('/api/proxy-download', async (req: Request, res: Response) => {
   try {
