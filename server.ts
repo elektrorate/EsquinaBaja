@@ -188,13 +188,33 @@ async function extractWithYtDlp(url: string) {
 }
 
 // yt-dlp carousel/album extraction: returns all slides/posts (images + videos)
+// Note: yt-dlp only exposes VIDEO slides in stdout. Image slides are printed as
+// "ERROR: [Instagram] <id>: No video formats found!" in stderr, so we recover the
+// image slide IDs from stderr and rebuild each image URL via the classic
+// https://www.instagram.com/p/<id>/media/?size=l endpoint.
 async function extractCarouselWithYtDlp(url: string) {
+  let stdout = '';
+  let stderr = '';
   try {
-    const { stdout } = await execFileAsync(
+    const out = await execFileAsync(
       YTDLP_BIN,
       ['--no-warnings', '-J', url],
       { timeout: 90000, windowsHide: true, maxBuffer: 20 * 1024 * 1024 }
     );
+    stdout = out.stdout || '';
+    stderr = out.stderr || '';
+  } catch (err: any) {
+    // yt-dlp exits non-zero when some slides fail, but still prints the full
+    // playlist JSON to stdout. Recover it from the thrown error object.
+    stdout = err.stdout || '';
+    stderr = err.stderr || '';
+    if (!stdout) {
+      console.warn('yt-dlp carousel extraction failed:', err.message);
+      return null;
+    }
+  }
+
+  try {
     const info = JSON.parse(stdout);
 
     // A carousel in yt-dlp appears as a playlist with multiple entries
@@ -202,32 +222,60 @@ async function extractCarouselWithYtDlp(url: string) {
       info._type === 'playlist' && Array.isArray(info.entries) ? info.entries : [];
     if (entries.length <= 1) return null;
 
-    const items = entries
-      .filter((entry: any) => entry && !entry._type)
-      .map((entry: any, index: number) => {
-        let url = entry.url || '';
+    // Recover image slide ids from yt-dlp stderr, in the order they fail
+    const imageIds: string[] = [];
+    const stderrStr = String(stderr || '');
+    const idRe = /\[Instagram\]\s+([A-Za-z0-9_-]+):\s*(?:No video formats found|There is no video)/gi;
+    let m: RegExpExecArray | null;
+    while ((m = idRe.exec(stderrStr)) !== null) {
+      if (!imageIds.includes(m[1])) imageIds.push(m[1]);
+    }
+
+    let imgIdx = 0;
+    const items: any[] = [];
+    entries.forEach((entry: any, index: number) => {
+      let slide = entry && !entry._type ? entry : null;
+      if (slide) {
+        let url = slide.url || '';
         if (url && !url.startsWith('http')) url = '';
-        if (!url && Array.isArray(entry.formats)) {
-          const f = [...entry.formats].reverse().find((x: any) => x.url && String(x.url).startsWith('http'));
+        if (!url && Array.isArray(slide.formats)) {
+          const f = [...slide.formats].reverse().find((x: any) => x.url && String(x.url).startsWith('http'));
           url = f?.url || '';
         }
-        if (!url) return null;
-        const isVideo = /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url) || entry.vcodec !== 'none' || entry.ext === 'mp4';
-        const ext = isVideo ? 'mp4' : 'jpg';
-        return {
-          url,
-          title: `${entry.id || index + 1}.${ext}`,
-          thumbnail: typeof entry.thumbnail === 'string' && entry.thumbnail.startsWith('http') ? entry.thumbnail : url,
-          isVideo,
-        };
-      })
-      .filter(Boolean);
+        if (!url) {
+          slide = null;
+        }
+      }
+      if (!slide) {
+        // Image slide: build direct image URL from its recovered id
+        const slideId = imageIds[imgIdx] || (entries as any[])[index]?.id;
+        imgIdx++;
+        if (slideId) {
+          items.push({
+            url: `https://www.instagram.com/p/${slideId}/media/?size=l`,
+            title: `${slideId}.jpg`,
+            thumbnail: `https://www.instagram.com/p/${slideId}/media/?size=l`,
+            isVideo: false,
+          });
+        }
+        return;
+      }
+      const isVideo = /\.(mp4|webm|mov|m4v)(\?|$)/i.test(slide.url || '') || slide.vcodec !== 'none' || slide.ext === 'mp4';
+      const ext = isVideo ? 'mp4' : 'jpg';
+      items.push({
+        url: slide.url,
+        title: `${slide.id || index + 1}.${ext}`,
+        thumbnail: typeof slide.thumbnail === 'string' && slide.thumbnail.startsWith('http') ? slide.thumbnail : slide.url,
+        isVideo,
+      });
+    });
 
-    if (items.length <= 1) return null;
+    const validItems = items.filter(Boolean);
+    if (validItems.length <= 1) return null;
     return {
-      entries: items,
+      entries: validItems,
       title: typeof info.title === 'string' ? info.title : undefined,
-      thumbnail: typeof info.thumbnail === 'string' && info.thumbnail.startsWith('http') ? info.thumbnail : items[0].thumbnail,
+      thumbnail: typeof info.thumbnail === 'string' && info.thumbnail.startsWith('http') ? info.thumbnail : validItems[0].thumbnail,
     };
   } catch (err: any) {
     console.warn('yt-dlp carousel extraction failed:', err.message);
