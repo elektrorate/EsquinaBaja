@@ -161,12 +161,24 @@ async function extractTikTok(url: string) {
 
 // yt-dlp fallback: extracts direct media URL + metadata without any API key/quota
 async function extractWithYtDlp(url: string) {
+  let stdout = '';
   try {
-    const { stdout } = await execFileAsync(
+    const out = await execFileAsync(
       YTDLP_BIN,
       ['--no-warnings', '--no-playlist', '-J', url],
       { timeout: 60000, windowsHide: true, maxBuffer: 15 * 1024 * 1024 }
     );
+    stdout = out.stdout || '';
+  } catch (err: any) {
+    // Instagram rate-limits datacenter IPs intermittently; yt-dlp may exit
+    // non-zero yet still print the JSON to stdout. Recover it.
+    stdout = err.stdout || '';
+    if (!stdout) {
+      console.warn('yt-dlp extraction failed:', err.message);
+      return null;
+    }
+  }
+  try {
     const info = JSON.parse(stdout);
     let videoUrl = info.url || '';
     if (videoUrl && !videoUrl.startsWith('http')) videoUrl = '';
@@ -182,7 +194,7 @@ async function extractWithYtDlp(url: string) {
       duration: typeof info.duration === 'number' ? info.duration : undefined,
     };
   } catch (err: any) {
-    console.warn('yt-dlp extraction failed:', err.message);
+    console.warn('yt-dlp extraction parse failed:', err.message);
     return null;
   }
 }
