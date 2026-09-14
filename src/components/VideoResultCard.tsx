@@ -16,6 +16,17 @@ import {
 import { VideoMediaInfo, DownloadHistoryItem } from '../types';
 import { downloadFileUniversal } from '../services/clientExtractor';
 import { signInToGoogleAndUpload, signInToGoogleAndUploadAlbum } from '../services/googleDrive';
+import { API_BASE_URL } from '../config';
+
+// Instagram blocks <img> requests that carry a foreign Referer. Route those
+// through the backend proxy so the images render in the browser.
+function resolveImageUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  if (/^https:\/\/(www\.)?instagram\.com\/p\/[^?]+\/media\//.test(url)) {
+    return `${API_BASE_URL}/api/proxy-image?url=${encodeURIComponent(url)}`;
+  }
+  return url;
+}
 
 interface VideoResultCardProps {
   media: VideoMediaInfo;
@@ -199,7 +210,7 @@ export function VideoResultCard({ media, onToast, onAddHistory }: VideoResultCar
                   return active.isVideo ? (
                     <video
                       src={active.url}
-                      poster={active.thumbnail}
+                      poster={resolveImageUrl(active.thumbnail)}
                       controls
                       playsInline
                       preload="metadata"
@@ -207,7 +218,7 @@ export function VideoResultCard({ media, onToast, onAddHistory }: VideoResultCar
                     />
                   ) : (
                     <img
-                      src={selectedSlide || active.thumbnail}
+                      src={resolveImageUrl(selectedSlide || active.thumbnail)}
                       alt={media.title}
                       className="w-full h-full object-contain bg-black"
                     />
@@ -234,7 +245,7 @@ export function VideoResultCard({ media, onToast, onAddHistory }: VideoResultCar
                       }
                     }}
                   >
-                    <img src={slide.thumbnail} alt="" className="w-full h-full object-cover" />
+                    <img src={resolveImageUrl(slide.thumbnail)} alt="" className="w-full h-full object-cover" />
                     {slide.isVideo && (
                       <span className="absolute bottom-0.5 right-0.5 text-[7px] bg-black/70 text-white px-1 rounded leading-none">
                         MP4

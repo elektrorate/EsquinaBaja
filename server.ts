@@ -82,6 +82,43 @@ const PORT = Number(process.env.PORT) || 8040;
 
 app.use(express.json());
 
+// Proxy images from Instagram CDN (the browser can't fetch them directly because
+// Instagram blocks requests with a non-instagram.com Referer).
+app.get('/api/proxy-image', async (req: Request, res: Response) => {
+  try {
+    const url = req.query.url as string;
+    if (!url || !url.startsWith('http')) {
+      res.status(400).json({ error: 'Missing or invalid url param' });
+      return;
+    }
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    };
+    const cookieArgs = ytDlpCookiesArgs();
+    if (cookieArgs.length && fs.existsSync(IG_COOKIES_PATH)) {
+      const raw = fs.readFileSync(IG_COOKIES_PATH, 'utf8').replace(/\r/g, '');
+      const cookieLine = raw.split('\n')
+        .filter(l => l && !l.startsWith('#') && l.includes('\t'))
+        .map(l => { const p = l.split('\t'); return `${p[5]}=${p[6]}`; })
+        .join('; ');
+      if (cookieLine) headers['Cookie'] = cookieLine;
+    }
+    const igRes = await fetch(url, { headers, redirect: 'follow' });
+    if (!igRes.ok) {
+      res.status(igRes.status).json({ error: `Upstream ${igRes.status}` });
+      return;
+    }
+    const contentType = igRes.headers.get('content-type') || 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    const buf = Buffer.from(await igRes.arrayBuffer());
+    res.end(buf);
+  } catch (err: any) {
+    console.warn('proxy-image failed:', err.message);
+    res.status(502).json({ error: 'Proxy fetch failed' });
+  }
+});
+
 // CORS for online backend (Render / Firebase Hosting)
 app.use('/api', (req, res, next) => {
   const allowedOrigins = [
