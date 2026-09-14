@@ -23,6 +23,7 @@ export function UrlInputSection({
     const lower = val.toLowerCase().trim();
     if (lower.includes('tiktok.com')) return 'tiktok';
     if (lower.includes('instagram.com') || lower.includes('instagr.am')) return 'instagram';
+    if (lower.includes('facebook.com') || lower.includes('fb.watch') || lower.includes('fb.me')) return 'facebook';
     return 'unknown';
   };
 
@@ -68,6 +69,7 @@ export function UrlInputSection({
   // Sample quick test links
   const sampleTikTok = 'https://www.tiktok.com/@user/video/7684397094420892961';
   const sampleInstagram = 'https://www.instagram.com/reel/C32sP2iM_5k/';
+  const sampleFacebook = 'https://www.facebook.com/reel/';
 
   const handleApplySample = (sampleUrl: string) => {
     setUrl(sampleUrl);
@@ -89,9 +91,13 @@ export function UrlInputSection({
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-600 via-sky-500 to-indigo-600 dark:from-cyan-400 dark:via-sky-400 dark:to-indigo-400">
             TikTok
           </span>{' '}
-          e{' '}
+          <span className="text-neutral-400 dark:text-neutral-500 text-xl sm:text-2xl md:text-3xl font-black px-1">·</span>{' '}
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-600 via-pink-500 to-amber-500 dark:from-rose-400 dark:via-pink-400 dark:to-amber-300">
             Instagram
+          </span>{' '}
+          <span className="text-neutral-400 dark:text-neutral-500 text-xl sm:text-2xl md:text-3xl font-black px-1">·</span>{' '}
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-700 via-blue-500 to-cyan-500 dark:from-blue-400 dark:via-sky-400 dark:to-cyan-300">
+            Facebook
           </span>
         </h2>
         <p className="text-xs sm:text-sm md:text-base text-neutral-600 dark:text-neutral-400 mt-2 max-w-lg mx-auto leading-relaxed px-2 transition-colors">
@@ -115,6 +121,11 @@ export function UrlInputSection({
                     <span className="w-1.5 h-1.5 rounded-full bg-pink-500 dark:bg-pink-400"></span>
                     Instagram
                   </span>
+                ) : detectedPlatform === 'facebook' ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-blue-50 dark:bg-neutral-800 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400"></span>
+                    Facebook
+                  </span>
                 ) : (
                   <Search className="w-4 h-4 text-neutral-400 dark:text-neutral-500 ml-1" />
                 )}
@@ -126,7 +137,7 @@ export function UrlInputSection({
                 type="url"
                 value={url}
                 onChange={handleInputChange}
-                placeholder="Pega el enlace de TikTok o Instagram..."
+                placeholder="Pega el enlace de TikTok, Instagram o Facebook..."
                 autoComplete="off"
                 spellCheck={false}
                 className="w-full bg-transparent px-2 py-2 text-sm sm:text-base text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 focus:outline-none"
@@ -189,6 +200,19 @@ export function UrlInputSection({
                 <p className="font-semibold text-pink-800 dark:text-pink-300">Enlace de Instagram detectado</p>
                 <p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-0.5 leading-relaxed">
                   Meta bloquea las descargas directas en la web sin servidor backend. Al pulsar <strong>Obtener Video</strong> te guiaremos con opciones para este enlace o puedes probar con TikTok que descarga directamente.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Facebook alert banner when Facebook URL is typed */}
+          {detectedPlatform === 'facebook' && (
+            <div className="mt-3 p-3 rounded-2xl bg-blue-500/10 border border-blue-500/30 text-blue-900 dark:text-blue-200 text-xs flex items-start gap-2.5 text-left animate-in fade-in duration-200">
+              <AlertCircle className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold text-blue-800 dark:text-blue-300">Enlace de Facebook detectado</p>
+                <p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-0.5 leading-relaxed">
+                  Los videos públicos de Facebook (reels, watch y páginas) se pueden descargar. Al pulsar <strong>Obtener Video</strong> buscaremos la mejor resolución disponible.
                 </p>
               </div>
             </div>

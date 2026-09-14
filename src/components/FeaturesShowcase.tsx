@@ -9,7 +9,7 @@ export function FeaturesShowcase({ onOpenIdeas }: FeaturesShowcaseProps) {
     {
       icon: Video,
       title: 'Sin marca de agua',
-      desc: 'Descarga videos limpios de TikTok e Instagram en máxima resolución.',
+      desc: 'Descarga videos limpios de TikTok, Instagram y Facebook en máxima resolución.',
       color: 'text-rose-500 dark:text-rose-400',
     },
     {

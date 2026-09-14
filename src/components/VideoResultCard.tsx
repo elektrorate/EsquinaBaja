@@ -288,10 +288,12 @@ export function VideoResultCard({ media, onToast, onAddHistory }: VideoResultCar
                   className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold shadow-md backdrop-blur-md ${
                     media.platform === 'tiktok'
                       ? 'bg-white/90 dark:bg-neutral-900/80 border border-cyan-500/40 text-cyan-700 dark:text-cyan-300'
-                      : 'bg-white/90 dark:bg-neutral-900/80 border border-pink-500/40 text-pink-700 dark:text-pink-300'
+                      : media.platform === 'facebook'
+                        ? 'bg-white/90 dark:bg-neutral-900/80 border border-blue-500/40 text-blue-700 dark:text-blue-300'
+                        : 'bg-white/90 dark:bg-neutral-900/80 border border-pink-500/40 text-pink-700 dark:text-pink-300'
                   }`}
                 >
-                  {media.platform === 'tiktok' ? 'TikTok' : 'Instagram'}
+                  {media.platform === 'tiktok' ? 'TikTok' : media.platform === 'facebook' ? 'Facebook' : 'Instagram'}
                 </span>
               </div>
             </div>
