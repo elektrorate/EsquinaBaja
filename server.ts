@@ -1,12 +1,30 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import path from 'path';
+import fs from 'fs';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createServer as createViteServer } from 'vite';
 
 const execFileAsync = promisify(execFile);
 const YTDLP_BIN = process.env.YTDLP_BIN || path.join(process.cwd(), process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
+
+// Optional Instagram session cookies (Netscape format) to avoid anonymous rate-limits.
+const IG_COOKIES_PATH = path.join(process.cwd(), 'ig_cookies.txt');
+if (process.env.IG_COOKIES_TXT) {
+  try {
+    fs.writeFileSync(IG_COOKIES_PATH, process.env.IG_COOKIES_TXT, 'utf8');
+    console.log('IG cookies loaded from env.');
+  } catch (e: any) {
+    console.warn('Could not write IG cookies file:', e.message);
+  }
+}
+function ytDlpCookiesArgs(): string[] {
+  if (process.env.IG_COOKIES_TXT && fs.existsSync(IG_COOKIES_PATH)) {
+    return ['--cookies', IG_COOKIES_PATH];
+  }
+  return [];
+}
 
 // Tiny in-memory cache so repeated extracts of the same URL don't hammer Instagram.
 const urlCache = new Map<string, { value: string; expires: number }>();
@@ -34,9 +52,10 @@ function cacheSet(key: string, value: string): void {
 // Run yt-dlp and return stdout/stderr even when the exit code is non-zero
 // (Instagram rate-limit etc. makes yt-dlp exit 1 while still printing JSON).
 async function runYtDlp(args: string[], timeoutMs: number): Promise<{ stdout: string; stderr: string }> {
+  const base = ytDlpCookiesArgs().concat(args);
   const attemptList: string[][] = [
-    args,
-    ['--extractor-args', 'instagram:api=web'].concat(args),
+    base,
+    ['--extractor-args', 'instagram:api=web'].concat(base),
   ];
   let lastErr: any = null;
   for (const cmdArgs of attemptList) {
