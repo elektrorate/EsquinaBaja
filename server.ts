@@ -8,6 +8,49 @@ import { createServer as createViteServer } from 'vite';
 const execFileAsync = promisify(execFile);
 const YTDLP_BIN = process.env.YTDLP_BIN || path.join(process.cwd(), process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
 
+// Tiny in-memory cache so repeated extracts of the same URL don't hammer Instagram.
+const urlCache = new Map<string, { value: string; expires: number }>();
+const URL_CACHE_TTL = 1000 * 60 * 20;
+
+function cacheGet(key: string): string | undefined {
+  const hit = urlCache.get(key);
+  if (!hit) return undefined;
+  if (Date.now() > hit.expires) {
+    urlCache.delete(key);
+    return undefined;
+  }
+  return hit.value;
+}
+function cacheSet(key: string, value: string): void {
+  if (urlCache.size > 400) {
+    const now = Date.now();
+    for (const [k, v] of urlCache) {
+      if (now > v.expires) urlCache.delete(k);
+    }
+  }
+  urlCache.set(key, { value, expires: Date.now() + URL_CACHE_TTL });
+}
+
+// Run yt-dlp and return stdout/stderr even when the exit code is non-zero
+// (Instagram rate-limit etc. makes yt-dlp exit 1 while still printing JSON).
+async function runYtDlp(args: string[], timeoutMs: number): Promise<{ stdout: string; stderr: string }> {
+  const attemptList: string[][] = [
+    args,
+    ['--extractor-args', 'instagram:api=web'].concat(args),
+  ];
+  let lastErr: any = null;
+  for (const cmdArgs of attemptList) {
+    try {
+      const out = await execFileAsync(YTDLP_BIN, cmdArgs, { timeout: timeoutMs, windowsHide: true, maxBuffer: 25 * 1024 * 1024 });
+      return { stdout: out.stdout || '', stderr: out.stderr || '' };
+    } catch (err: any) {
+      lastErr = err;
+      if (err.stdout) return { stdout: err.stdout, stderr: err.stderr || '' };
+    }
+  }
+  throw lastErr;
+}
+
 const app = express();
 const PORT = Number(process.env.PORT) || 8040;
 
@@ -161,25 +204,26 @@ async function extractTikTok(url: string) {
 
 // yt-dlp fallback: extracts direct media URL + metadata without any API key/quota
 async function extractWithYtDlp(url: string) {
-  let stdout = '';
-  try {
-    const out = await execFileAsync(
-      YTDLP_BIN,
-      ['--no-warnings', '--no-playlist', '-J', url],
-      { timeout: 60000, windowsHide: true, maxBuffer: 15 * 1024 * 1024 }
-    );
-    stdout = out.stdout || '';
-  } catch (err: any) {
-    // Instagram rate-limits datacenter IPs intermittently; yt-dlp may exit
-    // non-zero yet still print the JSON to stdout. Recover it.
-    stdout = err.stdout || '';
-    if (!stdout) {
+  const cacheKey = `single:${url}`;
+  const cached = cacheGet(cacheKey);
+  const raw = cached || await (async () => {
+    let stdout = '';
+    let stderr = '';
+    try {
+      const out = await runYtDlp(['--no-warnings', '--no-playlist', '-J', url], 60000);
+      stdout = out.stdout;
+      stderr = out.stderr;
+    } catch (err: any) {
       console.warn('yt-dlp extraction failed:', err.message);
       return null;
     }
-  }
+    cacheSet(cacheKey, `${stdout}\n@RATE@\n${stderr}`);
+    return `${stdout}\n@RATE@\n${stderr}`;
+  })();
+
+  if (!raw) return null;
   try {
-    const info = JSON.parse(stdout);
+    const info = JSON.parse(raw.split('\n@RATE@\n')[0]);
     let videoUrl = info.url || '';
     if (videoUrl && !videoUrl.startsWith('http')) videoUrl = '';
     if (!videoUrl && Array.isArray(info.formats)) {
@@ -205,25 +249,28 @@ async function extractWithYtDlp(url: string) {
 // image slide IDs from stderr and rebuild each image URL via the classic
 // https://www.instagram.com/p/<id>/media/?size=l endpoint.
 async function extractCarouselWithYtDlp(url: string) {
+  const cacheKey = `carousel:${url}`;
+  const cached = cacheGet(cacheKey);
+
   let stdout = '';
   let stderr = '';
-  try {
-    const out = await execFileAsync(
-      YTDLP_BIN,
-      ['--no-warnings', '-J', url],
-      { timeout: 90000, windowsHide: true, maxBuffer: 20 * 1024 * 1024 }
-    );
-    stdout = out.stdout || '';
-    stderr = out.stderr || '';
-  } catch (err: any) {
-    // yt-dlp exits non-zero when some slides fail, but still prints the full
-    // playlist JSON to stdout. Recover it from the thrown error object.
-    stdout = err.stdout || '';
-    stderr = err.stderr || '';
-    if (!stdout) {
+  if (cached) {
+    const parts = cached.split('\n@RATE@\n');
+    stdout = parts[0] || '';
+    stderr = parts[1] || '';
+  } else {
+    try {
+      const out = await runYtDlp(['--no-warnings', '-J', url], 90000);
+      stdout = out.stdout;
+      stderr = out.stderr;
+    } catch (err: any) {
+      // yt-dlp exits non-zero when some slides fail, but still prints the full
+      // playlist JSON to stdout.
       console.warn('yt-dlp carousel extraction failed:', err.message);
       return null;
     }
+    if (!stdout) return null;
+    cacheSet(cacheKey, `${stdout}\n@RATE@\n${stderr}`);
   }
 
   try {
