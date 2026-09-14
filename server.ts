@@ -14,7 +14,13 @@ const YTDLP_BIN = process.env.YTDLP_BIN || path.join(process.cwd(), process.plat
 const IG_COOKIES_PATH = path.join(process.cwd(), 'ig_cookies.txt');
 if (process.env.IG_COOKIES_TXT) {
   try {
-    fs.writeFileSync(IG_COOKIES_PATH, process.env.IG_COOKIES_TXT, 'utf8');
+    let raw = process.env.IG_COOKIES_TXT;
+    // Allow a base64 single-line value (Render's env input doesn't accept newlines).
+    if (!raw.includes('\n') && !raw.includes('\t')) {
+      const decoded = Buffer.from(raw, 'base64').toString('utf8');
+      if (decoded.includes('.instagram.com')) raw = decoded;
+    }
+    fs.writeFileSync(IG_COOKIES_PATH, raw, 'utf8');
     console.log('IG cookies loaded from env.');
   } catch (e: any) {
     console.warn('Could not write IG cookies file:', e.message);
