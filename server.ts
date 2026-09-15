@@ -788,7 +788,8 @@ async function extractTwitter(rawUrl: string) {
           const metaVideo = (html.match(/<meta\s+name="twitter:player:stream"\s+content="([^"]+)"/i) ||
                              html.match(/<meta\s+content="([^"]+)"\s+name="twitter:player:stream"/i))?.[1]?.replace(/&amp;/g, '&');
           const found = ogVideo || metaVideo;
-          if (found && found.startsWith('http')) videoUrl = found;
+          // Ignore HLS manifests — a saved .mp4 from an .m3u8 would be corrupt
+          if (found && found.startsWith('http') && !found.includes('.m3u8') && !found.includes('/pl/')) videoUrl = found;
 
           if (!coverUrl) {
             const ogImg = (html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i) ||
@@ -994,10 +995,16 @@ app.get('/api/proxy-download', async (req: Request, res: Response) => {
 
     const contentType = headRes.headers.get('content-type') || (filename.endsWith('.mp3') ? 'audio/mpeg' : 'video/mp4');
 
+    // Guard: HLS manifests / playlists can't be saved as a single MP4. Abort early.
+    if (mediaUrl.includes('.m3u8') || mediaUrl.includes('/pl/')) {
+      res.status(502).send('El enlace apunta a un manifiesto HLS (playlist), no a un archivo de video directo.');
+      return;
+    }
+
     // Guard: if the origin returned a login/error page or playlist instead of media,
     // abort instead of streaming a corrupt file.
     const ctLower = contentType.toLowerCase();
-    if (ctLower.includes('text/html') || ctLower.includes('application/xml') || ctLower.includes('text/plain')) {
+    if (ctLower.includes('text/html') || ctLower.includes('application/xml') || ctLower.includes('text/plain') || ctLower.includes('mpegurl') || ctLower.includes('application/vnd.apple')) {
       res.status(502).send('El servidor de origen devolvió una página (inicio de sesión o bloqueo) en lugar del archivo de video.');
       return;
     }
