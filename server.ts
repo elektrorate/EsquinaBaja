@@ -303,6 +303,46 @@ async function extractTikTok(url: string) {
 }
 
 // yt-dlp fallback: extracts direct media URL + metadata without any API key/quota
+// Pick a direct downloadable media URL from a yt-dlp info/format list.
+// Rejects HLS manifests (.m3u8) and audio-only entries so the file is a real MP4.
+function pickDirectMediaUrl(info: any, fallbackUrl?: string): string {
+  const direct = (u: any): boolean => Boolean(u.url) && String(u.url).startsWith('http') && !String(u.url).includes('.m3u8');
+  const videoOnly = (f: any): boolean => {
+    const vcodec = typeof f.vcodec === 'string' ? f.vcodec : '';
+    return vcodec !== 'none' && vcodec !== '';
+  };
+  const protocolOk = (f: any): boolean => {
+    const p = typeof f.protocol === 'string' ? f.protocol.toLowerCase() : '';
+    return p !== 'm3u8' && p !== 'm3u8_native' && !p.includes('hls');
+  };
+
+  // 1. info.url if it's a direct file (not HLS)
+  if (fallbackUrl && String(fallbackUrl).startsWith('http') && !String(fallbackUrl).includes('.m3u8')) {
+    return fallbackUrl;
+  }
+
+  // 2. Best direct video format (highest resolution/bitrate), excluding HLS and audio-only
+  if (Array.isArray(info?.formats)) {
+    const candidates = info.formats
+      .filter((f: any) => direct(f) && videoOnly(f) && protocolOk(f))
+      .sort((a: any, b: any) => {
+        const score = (f: any) =>
+          (f.height || 0) * 1000000 + (f.tbr || f.bitrate || 0) * (f.asr || 1);
+        return score(b) - score(a);
+      });
+    const best = candidates[0];
+    if (best?.url) return best.url;
+  }
+
+  // 3. Any direct URL, ignoring codec/protocol
+  if (Array.isArray(info?.formats)) {
+    const first = info.formats.find((f: any) => direct(f));
+    if (first?.url) return first.url;
+  }
+
+  return '';
+}
+
 async function extractWithYtDlp(url: string, hostKey: 'instagram' | 'facebook' | 'twitter' = 'instagram') {
   const cacheKey = `single:${hostKey}:${url}`;
   const cached = cacheGet(cacheKey);
@@ -326,12 +366,7 @@ async function extractWithYtDlp(url: string, hostKey: 'instagram' | 'facebook' |
   try {
     const info = JSON.parse(raw.split('\n@RATE@\n')[0]);
     if (!info || typeof info !== 'object') return null;
-    let videoUrl = info.url || '';
-    if (videoUrl && !videoUrl.startsWith('http')) videoUrl = '';
-    if (!videoUrl && Array.isArray(info.formats)) {
-      const f = [...info.formats].reverse().find((x: any) => x.url && String(x.url).startsWith('http'));
-      videoUrl = f?.url || '';
-    }
+    const videoUrl = pickDirectMediaUrl(info, info.url);
     if (!videoUrl) return null;
     return {
       videoUrl,
@@ -401,8 +436,7 @@ async function extractCarouselWithYtDlp(url: string) {
         let url = slide.url || '';
         if (url && !url.startsWith('http')) url = '';
         if (!url && Array.isArray(slide.formats)) {
-          const f = [...slide.formats].reverse().find((x: any) => x.url && String(x.url).startsWith('http'));
-          url = f?.url || '';
+          url = pickDirectMediaUrl({ formats: slide.formats, url: '' });
         }
         if (!url) {
           slide = null;
@@ -959,6 +993,15 @@ app.get('/api/proxy-download', async (req: Request, res: Response) => {
     }
 
     const contentType = headRes.headers.get('content-type') || (filename.endsWith('.mp3') ? 'audio/mpeg' : 'video/mp4');
+
+    // Guard: if the origin returned a login/error page or playlist instead of media,
+    // abort instead of streaming a corrupt file.
+    const ctLower = contentType.toLowerCase();
+    if (ctLower.includes('text/html') || ctLower.includes('application/xml') || ctLower.includes('text/plain')) {
+      res.status(502).send('El servidor de origen devolvió una página (inicio de sesión o bloqueo) en lugar del archivo de video.');
+      return;
+    }
+
     const contentLength = headRes.headers.get('content-length');
 
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);

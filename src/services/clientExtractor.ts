@@ -123,16 +123,31 @@ export async function extractMediaClient(url: string): Promise<VideoMediaInfo> {
  * Compatible with GitHub Pages (works without /api/proxy-download).
  */
 export async function downloadFileUniversal(url: string, filename: string): Promise<boolean> {
+  // HLS manifests can't be saved as media — go straight to proxy
+  if (url.includes('.m3u8')) {
+    return await downloadViaProxy(url, filename);
+  }
+
   // 1. Try Blob download (creates genuine file download on device)
   try {
     const res = await fetch(url, { mode: 'cors' });
     if (res.ok) {
       const blob = await res.blob();
-      // Verify the returned blob is media and not an AccessDenied XML error
-      if (blob.type.includes('xml') || blob.type.includes('html')) {
-        const text = await blob.text();
-        if (text.includes('<Error>') || text.includes('AccessDenied')) {
-          throw new Error('El enlace de descarga directo expiró o requiere autenticación de la plataforma.');
+      // Verify the returned blob is actually media and not a login/error page
+      const type = (blob.type || '').toLowerCase();
+      if (type.includes('xml') || type.includes('json') || looksLikeText(blob, type)) {
+        const text2 = await blob.slice(0, 4096).text();
+        const looksBad =
+          text2.includes('<Error>') ||
+          text2.includes('AccessDenied') ||
+          text2.includes('<!DOCTYPE html') ||
+          text2.startsWith('<html') ||
+          text2.includes('login') ||
+          text2.indexOf('#EXTM3U') === 0 ||
+          /^\s*[\[{]/.test(text2);
+        if (looksBad) {
+          console.warn('Direct download returned a non-media payload, using proxy:', text2.slice(0, 80));
+          return await downloadViaProxy(url, filename);
         }
       }
       const blobUrl = window.URL.createObjectURL(blob);
@@ -152,9 +167,20 @@ export async function downloadFileUniversal(url: string, filename: string): Prom
     if (err?.message && err.message.includes('autenticación')) {
       throw err;
     }
+    return await downloadViaProxy(url, filename);
   }
+}
 
-  // 2. Try backend proxy: relative path on localhost, Render URL on online versions
+// Returns true when the blob claims a text-ish type or type is unknown — a real
+// MP4/WebM normally reports video/* or application/octet-stream with binary data.
+function looksLikeText(blob: Blob, type: string) {
+  if (type.startsWith('video/') || type.startsWith('audio/') || type.startsWith('image/')) return false;
+  if (type.includes('octet-stream') || type.includes('mp4') || type.includes('webm')) return false;
+  return true;
+}
+
+async function downloadViaProxy(url: string, filename: string): Promise<boolean> {
+  // 2. Backend proxy: relative path on localhost, Render URL on online versions
   try {
     const proxyUrl = `${API_BASE_URL}/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
     const link = document.createElement('a');
