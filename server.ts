@@ -936,6 +936,23 @@ app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+app.get('/api/debug-cobalt', async (req: Request, res: Response) => {
+  try {
+    const cobaltUrl = process.env.COBALT_API_URL || 'https://cobalt-api-k6wt.onrender.com';
+    console.log(`[DEBUG] Testing Cobalt at: ${cobaltUrl}`);
+    const response = await fetch(cobaltUrl, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+    const text = await response.text();
+    console.log(`[DEBUG] Cobalt response: ${response.status} - ${text.substring(0, 200)}`);
+    res.json({ cobaltUrl, status: response.status, body: text.substring(0, 500) });
+  } catch (err: any) {
+    console.error(`[DEBUG] Cobalt error: ${err.message}`);
+    res.json({ error: err.message, cobaltUrl: process.env.COBALT_API_URL || 'not set' });
+  }
+});
+
 // Extract media information
 app.post('/api/extract', async (req: Request, res: Response) => {
   try {
@@ -989,6 +1006,32 @@ app.post('/api/extract', async (req: Request, res: Response) => {
         } catch (ydErr: any) {
           console.error('TikTok yt-dlp fallback failed:', ydErr.message);
         }
+        // Cobalt API fallback for TikTok
+        try {
+          const cobaltInfo = await extractWithCobalt(trimmedUrl);
+          if (cobaltInfo && cobaltInfo.videoUrl) {
+            res.json({
+              success: true,
+              data: {
+                id: `tt_${Date.now()}`,
+                platform: 'tiktok',
+                originalUrl: trimmedUrl,
+                title: cobaltInfo.title || 'Video de TikTok',
+                author: { name: 'TikTok Creator', username: '@tiktok' },
+                thumbnail: cobaltInfo.thumbnail,
+                duration: 0,
+                downloadOptions: {
+                  videoNoWatermark: cobaltInfo.videoUrl,
+                  videoHd: cobaltInfo.videoUrl,
+                  thumbnail: cobaltInfo.thumbnail,
+                },
+              },
+            });
+            return;
+          }
+        } catch (cobErr: any) {
+          console.error('TikTok Cobalt fallback failed:', cobErr.message);
+        }
         res.status(422).json({
           success: false,
           error: 'No se pudo obtener el video de TikTok. Verifica que el video sea público y que el enlace esté completo.',
@@ -1009,6 +1052,34 @@ app.post('/api/extract', async (req: Request, res: Response) => {
         });
         return;
       } catch (igErr: any) {
+        console.error('Instagram extraction failed:', igErr.message);
+        try {
+          const cobaltInfo = await extractWithCobalt(trimmedUrl);
+          if (cobaltInfo && cobaltInfo.videoUrl) {
+            res.json({
+              success: true,
+              data: {
+                id: `ig_${Date.now()}`,
+                platform: 'instagram',
+                originalUrl: trimmedUrl,
+                title: cobaltInfo.title || 'Publicación de Instagram',
+                author: { name: 'Instagram Creator', username: '@instagram' },
+                thumbnail: cobaltInfo.thumbnail,
+                duration: 0,
+                downloadOptions: {
+                  videoNoWatermark: cobaltInfo.videoUrl,
+                  videoHd: cobaltInfo.videoUrl,
+                  thumbnail: cobaltInfo.thumbnail,
+                },
+                isFallback: true,
+                picker: cobaltInfo.picker,
+              },
+            });
+            return;
+          }
+        } catch (cobErr: any) {
+          console.error('Instagram Cobalt fallback failed:', cobErr.message);
+        }
         res.status(422).json({
           success: false,
           error: 'No se pudo procesar el enlace de Instagram. Verifica que la cuenta sea pública.',
@@ -1029,6 +1100,33 @@ app.post('/api/extract', async (req: Request, res: Response) => {
         });
         return;
       } catch (fbErr: any) {
+        console.error('Facebook extraction failed:', fbErr.message);
+        try {
+          const cobaltInfo = await extractWithCobalt(trimmedUrl);
+          if (cobaltInfo && cobaltInfo.videoUrl) {
+            res.json({
+              success: true,
+              data: {
+                id: `fb_${Date.now()}`,
+                platform: 'facebook',
+                originalUrl: trimmedUrl,
+                title: cobaltInfo.title || 'Video de Facebook',
+                author: { name: 'Facebook Creator', username: '@facebook' },
+                thumbnail: cobaltInfo.thumbnail,
+                duration: 0,
+                downloadOptions: {
+                  videoNoWatermark: cobaltInfo.videoUrl,
+                  videoHd: cobaltInfo.videoUrl,
+                  thumbnail: cobaltInfo.thumbnail,
+                },
+                isFallback: true,
+              },
+            });
+            return;
+          }
+        } catch (cobErr: any) {
+          console.error('Facebook Cobalt fallback failed:', cobErr.message);
+        }
         res.status(422).json({
           success: false,
           error: 'No se pudo procesar el enlace de Facebook. Verifica que el video sea público o que no esté en un grupo cerrado.',
@@ -1049,6 +1147,33 @@ app.post('/api/extract', async (req: Request, res: Response) => {
         });
         return;
       } catch (twErr: any) {
+        console.error('Twitter extraction failed:', twErr.message);
+        try {
+          const cobaltInfo = await extractWithCobalt(trimmedUrl);
+          if (cobaltInfo && cobaltInfo.videoUrl) {
+            res.json({
+              success: true,
+              data: {
+                id: `tw_${Date.now()}`,
+                platform: 'twitter',
+                originalUrl: trimmedUrl,
+                title: cobaltInfo.title || 'Video de X (Twitter)',
+                author: { name: 'X Creator', username: '@x' },
+                thumbnail: cobaltInfo.thumbnail,
+                duration: 0,
+                downloadOptions: {
+                  videoNoWatermark: cobaltInfo.videoUrl,
+                  videoHd: cobaltInfo.videoUrl,
+                  thumbnail: cobaltInfo.thumbnail,
+                },
+                isFallback: true,
+              },
+            });
+            return;
+          }
+        } catch (cobErr: any) {
+          console.error('Twitter Cobalt fallback failed:', cobErr.message);
+        }
         res.status(422).json({
           success: false,
           error: 'No se pudo procesar el enlace de X (Twitter). Verifica que el tweet sea público o que no haya sido eliminado.',
