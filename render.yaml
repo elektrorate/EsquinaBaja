@@ -3,11 +3,13 @@ services:
     name: esquinabaja-api
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build && curl -L -o yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp && chmod +x yt-dlp
+    buildCommand: npm install && npm run build && curl -L -o yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp && chmod +x yt-dlp && curl -L -o ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz && tar xf ffmpeg.tar.xz && cp ffmpeg-*-static/ffmpeg . && rm -rf ffmpeg-*-static ffmpeg.tar.xz
     startCommand: npm start
     autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
+      - key: COBALT_API_URL
+        sync: false
       - key: IG_COOKIES_TXT
         sync: false

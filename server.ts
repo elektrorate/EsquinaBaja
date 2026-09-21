@@ -109,7 +109,7 @@ async function runYtDlp(
 }
 
 const app = express();
-const PORT = Number(process.env.PORT) || 8040;
+const PORT = Number(process.env.PORT) || 5000;
 
 app.use(express.json());
 
@@ -380,6 +380,66 @@ async function extractWithYtDlp(url: string, hostKey: 'instagram' | 'facebook' |
   }
 }
 
+// Cobalt API extraction: free, no cookies needed, supports Instagram/Facebook/Twitter/TikTok/YouTube
+const COBALT_API_URL = process.env.COBALT_API_URL || 'https://cobalt-api-k6wt.onrender.com';
+
+async function extractWithCobalt(url: string): Promise<{ videoUrl: string; title?: string; thumbnail?: string; picker?: any[] } | null> {
+  try {
+    const response = await fetch(COBALT_API_URL, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url,
+        videoQuality: '1080',
+        filenameStyle: 'pretty',
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn(`Cobalt API error: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+
+    if (data.status === 'error') {
+      console.warn('Cobalt API returned error:', data.error?.code);
+      return null;
+    }
+
+    // tunnel or redirect: direct download URL
+    if ((data.status === 'tunnel' || data.status === 'redirect') && data.url) {
+      return {
+        videoUrl: data.url,
+        title: data.filename || undefined,
+      };
+    }
+
+    // picker: multiple items (e.g., Instagram carousel)
+    if (data.status === 'picker' && Array.isArray(data.picker)) {
+      const videos = data.picker.filter((item: any) => item.type === 'video');
+      const photos = data.picker.filter((item: any) => item.type === 'photo');
+      // Prefer videos, fall back to first item
+      const items = videos.length > 0 ? videos : data.picker;
+      if (items.length > 0 && items[0].url) {
+        return {
+          videoUrl: items[0].url,
+          title: items[0].type === 'video' ? 'video' : 'photo',
+          picker: data.picker,
+        };
+      }
+    }
+
+    return null;
+  } catch (err: any) {
+    console.warn('Cobalt API extraction error:', err.message);
+    return null;
+  }
+}
+
 // yt-dlp carousel/album extraction: returns all slides/posts (images + videos)
 // Note: yt-dlp only exposes VIDEO slides in stdout. Image slides are printed as
 // "ERROR: [Instagram] <id>: No video formats found!" in stderr, so we recover the
@@ -614,6 +674,16 @@ async function extractInstagram(url: string) {
       if (!coverUrl && carouselInfo.thumbnail) coverUrl = carouselInfo.thumbnail;
     }
 
+    // Cobalt API fallback: free, no cookies needed
+    if (!videoUrl) {
+      const cobaltInfo = await extractWithCobalt(cleanUrl);
+      if (cobaltInfo && cobaltInfo.videoUrl) {
+        videoUrl = cobaltInfo.videoUrl;
+        if (!coverUrl && cobaltInfo.thumbnail) coverUrl = cobaltInfo.thumbnail;
+        if (!title && cobaltInfo.title) title = cobaltInfo.title;
+      }
+    }
+
     // If still no videoUrl, we cannot deliver the real video - do not substitute a fake video
     if (!videoUrl && !carouselEntries) {
       throw new Error('Meta (Instagram) ha bloqueado el acceso a este video. La cuenta puede ser privada o requerir inicio de sesión.');
@@ -712,6 +782,16 @@ async function extractFacebook(rawUrl: string) {
       }
     }
 
+    // Cobalt API fallback: free, no cookies needed
+    if (!videoUrl) {
+      const cobaltInfo = await extractWithCobalt(target);
+      if (cobaltInfo && cobaltInfo.videoUrl) {
+        videoUrl = cobaltInfo.videoUrl;
+        if (!coverUrl && cobaltInfo.thumbnail) coverUrl = cobaltInfo.thumbnail;
+        if (!title && cobaltInfo.title) title = cobaltInfo.title;
+      }
+    }
+
     if (!videoUrl) {
       throw new Error('Meta (Facebook) ha bloqueado el acceso a este video. El video puede ser privado, de un grupo cerrado o requerir inicio de sesión.');
     }
@@ -804,6 +884,16 @@ async function extractTwitter(rawUrl: string) {
         }
       } catch (e) {
         console.warn('Twitter HTML fetch warning:', e);
+      }
+    }
+
+    // Cobalt API fallback: free, no cookies needed
+    if (!videoUrl) {
+      const cobaltInfo = await extractWithCobalt(target);
+      if (cobaltInfo && cobaltInfo.videoUrl) {
+        videoUrl = cobaltInfo.videoUrl;
+        if (!coverUrl && cobaltInfo.thumbnail) coverUrl = cobaltInfo.thumbnail;
+        if (!title && cobaltInfo.title) title = cobaltInfo.title;
       }
     }
 
